@@ -17,7 +17,7 @@
             <form id="reportForm">
                 <div class="form-group">
                     <label for="eventName">Nome do Evento/Período:</label>
-                    <input type="text" id="eventName" name="eventName" placeholder="Ex: Domingo - Manhã" required>
+                    <input type="text" id="eventName" name="eventName" placeholder="Ex: 25/05/25 - Domingo - Manhã" required>
                 </div>
 
                 <fieldset>
@@ -29,13 +29,25 @@
                 </fieldset>
 
                 <fieldset>
+                    <legend>Sala Babies</legend> <!-- ADICIONADO -->
+                    <div class="form-group">
+                        <label for="babiesCriancas">Bebês (Sala Babies):</label>
+                        <input type="number" id="babiesCriancas" name="babiesCriancas" min="0" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="babiesResponsaveis">Pais/Responsáveis (Sala Babies):</label>
+                        <input type="number" id="babiesResponsaveis" name="babiesResponsaveis" min="0" value="0">
+                    </div>
+                </fieldset>
+
+                <fieldset>
                     <legend>Kids</legend>
                     <div class="form-group">
                         <label for="kidsCriancas">Crianças (Kids):</label>
                         <input type="number" id="kidsCriancas" name="kidsCriancas" min="0" value="0">
                     </div>
                     <div class="form-group">
-                        <label for="kidsTias">Tias/Responsáveis (Kids):</label>
+                        <label for="kidsTias">Tias/Voluntários (Kids):</label>
                         <input type="number" id="kidsTias" name="kidsTias" min="0" value="0">
                     </div>
                 </fieldset>
@@ -47,16 +59,16 @@
                         <input type="number" id="teensAdolescentes" name="teensAdolescentes" min="0" value="0">
                     </div>
                     <div class="form-group">
-                        <label for="teensTios">Tio/Responsável (Teens):</label>
+                        <label for="teensTios">Tio/Voluntário (Teens):</label>
                         <input type="number" id="teensTios" name="teensTios" min="0" value="0">
                     </div>
                 </fieldset>
-                
+
                 <button type="submit" class="btn-submit">Gerar Relatório</button>
             </form>
         </section>
 
-        <div id="reportOutput" class="report-output-container">
+        <div id="reportOutputContainer" class="report-output-container">
             <!-- A tabela gerada aparecerá aqui -->
         </div>
 
