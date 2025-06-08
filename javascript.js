@@ -1,39 +1,81 @@
 document.addEventListener('DOMContentLoaded', function() {
     const reportForm = document.getElementById('reportForm');
-    const reportOutput = document.getElementById('reportOutput');
+    const reportOutputContainer = document.getElementById('reportOutputContainer'); // ID atualizado
     const generationDateEl = document.getElementById('generationDate');
+
+    // Verificações iniciais para garantir que os elementos essenciais existem
+    if (!reportForm) {
+        console.error("Formulário com ID 'reportForm' não encontrado!");
+        return;
+    }
+    if (!reportOutputContainer) {
+        console.error("Container de saída com ID 'reportOutputContainer' não encontrado!");
+        return;
+    }
+    if (!generationDateEl) {
+        console.error("Elemento de data com ID 'generationDate' não encontrado!");
+    }
 
     reportForm.addEventListener('submit', function(event) {
         event.preventDefault(); // Impede o envio padrão do formulário
 
-        const eventName = document.getElementById('eventName').value.trim();
-        
-        const dataEntries = [
-            { categoria: 'Culto', descricao: 'Presentes', quantidade: parseInt(document.getElementById('cultoPresentes').value) || 0 },
-            { categoria: 'Kids', descricao: 'Crianças', quantidade: parseInt(document.getElementById('kidsCriancas').value) || 0 },
-            { categoria: 'Kids', descricao: 'Tias', quantidade: parseInt(document.getElementById('kidsTias').value) || 0 },
-            { categoria: 'Teens', descricao: 'Adolescentes', quantidade: parseInt(document.getElementById('teensAdolescentes').value) || 0 },
-            { categoria: 'Teens', descricao: 'Tio', quantidade: parseInt(document.getElementById('teensTios').value) || 0 }
-        ];
+        try {
+            const eventNameInput = document.getElementById('eventName');
+            if (!eventNameInput) {
+                console.error("Campo 'eventName' não encontrado!");
+                alert("Erro interno: campo 'eventName' não encontrado.");
+                return;
+            }
+            const eventName = eventNameInput.value.trim();
 
-        // Filtra entradas com quantidade 0, a menos que seja a única entrada (para não gerar tabela vazia se tudo for 0)
-        const activeEntries = dataEntries.filter(entry => entry.quantidade > 0);
-        
-        if (!eventName) {
-            alert("Por favor, informe o nome do evento/período.");
-            return;
+            if (!eventName) {
+                alert("Por favor, informe o Nome do Evento/Período.");
+                eventNameInput.focus();
+                return;
+            }
+
+            const dataEntries = [
+                // Ordem de exibição na tabela
+                { grupo: 'Culto', categoria: 'Culto', descricao: 'Presentes', id: 'cultoPresentes' },
+                { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Bebês', id: 'babiesCriancas' },
+                { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Pais/Responsáveis', id: 'babiesResponsaveis' },
+                { grupo: 'Kids', categoria: 'Kids', descricao: 'Crianças', id: 'kidsCriancas' },
+                { grupo: 'Kids', categoria: 'Kids', descricao: 'Tias/Voluntários', id: 'kidsTias' },
+                { grupo: 'Teens', categoria: 'Teens', descricao: 'Adolescentes', id: 'teensAdolescentes' },
+                { grupo: 'Teens', categoria: 'Teens', descricao: 'Tio/Voluntário', id: 'teensTios' }
+            ];
+
+            const reportData = [];
+            let totalGeral = 0;
+
+            dataEntries.forEach(entryConfig => {
+                const inputElement = document.getElementById(entryConfig.id);
+                if (inputElement) {
+                    const quantidade = parseInt(inputElement.value) || 0;
+                    if (quantidade > 0) { // Apenas inclui na tabela se a quantidade for maior que 0
+                        reportData.push({
+                            categoria: entryConfig.categoria,
+                            descricao: entryConfig.descricao,
+                            quantidade: quantidade
+                        });
+                        totalGeral += quantidade;
+                    }
+                } else {
+                    console.warn(`Elemento de input com ID '${entryConfig.id}' não encontrado.`);
+                }
+            });
+
+            generateReportTable(eventName, reportData, totalGeral);
+            if (generationDateEl) updateGenerationDate();
+            reportOutputContainer.classList.add('has-content');
+
+        } catch (error) {
+            console.error("Erro ao gerar relatório:", error);
+            alert("Ocorreu um erro ao gerar o relatório. Verifique o console para mais detalhes.");
         }
-
-        // Se não houver entradas ativas e 'cultoPresentes' for 0, pode exibir uma mensagem ou tabela vazia controlada
-        // Por ora, vamos gerar a tabela mesmo que todas as quantidades sejam 0, o total será 0.
-
-        generateReportTable(eventName, activeEntries.length > 0 ? activeEntries : dataEntries); // Se tudo for 0, mostra as categorias com 0
-        updateGenerationDate();
-        reportOutput.classList.add('has-content'); // Adiciona classe para padding se necessário
     });
 
-    function generateReportTable(eventName, entries) {
-        let totalGeral = 0;
+    function generateReportTable(eventName, data, total) {
         let tableHTML = `
             <section class="table-section">
                 <h2>${escapeHTML(eventName)}</h2>
@@ -48,11 +90,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     <tbody>
         `;
 
-        entries.forEach(entry => {
-            // Adicionamos a linha mesmo que a quantidade seja 0,
-            // pois a solicitação implicava ver a estrutura, mesmo que vazia.
-            // Se for para omitir linhas com 0, adicionar: if (entry.quantidade > 0) { ... }
-             if (entry.quantidade > 0) { // APENAS MOSTRA LINHAS COM VALOR > 0
+        if (data.length === 0) {
+            tableHTML += `
+                <tr>
+                    <td colspan="3" style="text-align: center; font-style: italic;">Nenhuma contagem registrada para este evento.</td>
+                </tr>
+            `;
+        } else {
+            data.forEach(entry => {
                 tableHTML += `
                     <tr>
                         <td>${escapeHTML(entry.categoria)}</td>
@@ -60,42 +105,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>${entry.quantidade}</td>
                     </tr>
                 `;
-                totalGeral += entry.quantidade;
-            }
-        });
-        
-        // Se nenhuma entrada tiver quantidade > 0, o loop acima não adicionará nada.
-        // Para garantir que a tabela seja gerada mesmo com tudo 0, podemos mostrar todas as categorias com 0.
-        // Ou, se activeEntries estava vazio, podemos ter uma mensagem "Nenhuma contagem registrada".
-        // A lógica atual (passando dataEntries se activeEntries for vazio) não é ideal para este caso.
-        // Vamos ajustar: se NENHUMA entrada tiver valor, mostramos mensagem ou tabela vazia.
-        // Por ora, a lógica atual do forEach já filtra.
-
-        if (activeEntries.length === 0 && dataEntries.some(e => e.quantidade === 0)) {
-             // Se todas as entradas preenchidas forem 0, ou todas as entradas forem 0
-             // Podemos exibir todas as categorias com 0 ou uma mensagem.
-             // Para o comportamento de mostrar linhas com 0, o filtro no `entries.forEach` deve ser removido
-             // e o `totalGeral` calculado com base em todas as `dataEntries`.
-             // Vamos manter o filtro para mostrar apenas o que foi preenchido com valor > 0.
-             // Se nenhuma linha for adicionada (totalGeral continua 0 e activeEntries.length === 0),
-             // podemos adicionar uma linha de "Nenhum registro".
+            });
         }
-
 
         tableHTML += `
                     <tr class="total">
                         <td>Total</td>
                         <td>Total Geral</td>
-                        <td>${totalGeral}</td>
+                        <td>${total}</td>
                     </tr>
                 </tbody>
             </table>
         </section>
         `;
 
-        reportOutput.innerHTML = tableHTML;
+        reportOutputContainer.innerHTML = tableHTML; // Isso garante que é HTML renderizável
     }
-    
+
     function updateGenerationDate() {
         const today = new Date();
         const day = String(today.getDate()).padStart(2, '0');
@@ -104,13 +130,17 @@ document.addEventListener('DOMContentLoaded', function() {
         generationDateEl.textContent = `${day}/${month}/${year}`;
     }
 
-    // Função auxiliar para escapar HTML e prevenir XSS
     function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
         const div = document.createElement('div');
         div.appendChild(document.createTextNode(str));
         return div.innerHTML;
     }
 
-    // Inicializa a data no rodapé
-    updateGenerationDate();
+    // Inicializa a data no rodapé (se o elemento existir)
+    if (generationDateEl) {
+        updateGenerationDate();
+    } else {
+        console.warn("Elemento 'generationDate' não encontrado para atualização inicial da data.")
+    }
 });
