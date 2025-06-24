@@ -1,0 +1,67 @@
+/* ... (estilos existentes) ... */
+
+fieldset legend {
+    font-weight: 600;
+    color: var(--primary-color);
+    padding: 0 10px;
+}
+
+/* Container para os botões do formulário */
+.form-buttons-container {
+    display: flex; /* Alinha os botões lado a lado */
+    gap: 15px; /* Espaço entre os botões */
+    margin-top: 20px; /* Espaçamento acima dos botões */
+}
+
+.btn-submit {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 12px 20px; /* Ajuste no padding para caber melhor lado a lado */
+    border: none;
+    border-radius: 6px;
+    font-size: 1em; /* Ajuste no tamanho da fonte */
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+    display: block;
+    width: 100%; /* O flex container cuidará da largura */
+    flex: 1; /* Faz os botões dividirem o espaço igualmente */
+    text-align: center;
+}
+
+.btn-submit:hover {
+    background-color: #3e5a8a; /* Um tom mais escuro do azul primário */
+}
+
+/* Estilo específico para o botão de compartilhar, se necessário (ex: cor diferente) */
+.btn-share {
+    background-color: var(--success-color); /* Verde para ação de compartilhar */
+}
+
+.btn-share:hover {
+    background-color: #218838; /* Verde mais escuro */
+}
+
+
+/* Estilos para a Saída do Relatório (Tabela) */
+/* ... (resto dos estilos) ... */
+
+/* Media query para telas menores (como mobile Android) */
+@media (max-width: 600px) {
+    .form-buttons-container {
+        flex-direction: column; /* Botões um abaixo do outro em telas pequenas */
+    }
+
+    .btn-submit {
+        font-size: 0.95em; /* Fonte um pouco menor nos botões */
+        padding: 12px 15px;
+    }
+
+    header.report-header h1 {
+        font-size: 1.5em;
+    }
+
+    .form-section h2, .table-section h2 {
+        font-size: 1.2em;
+    }
+}
