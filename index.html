@@ -76,6 +76,11 @@
                 <div class="form-group">
                     <p>Data de Geração: <span id="generationDate"></span></p>
                 </div>
+                
+                <!-- Botão para processar dados brutos -->
+                <div class="form-group" style="text-align: center; margin-top: 30px; margin-bottom: 25px;">
+                    <button type="button" class="btn-submit btn-process" id="processRawDataBtn">Processar Dados Brutos (WhatsApp)</button>
+                </div>
 
                 <!-- Container para os botões -->
                 <div class="form-buttons-container">
@@ -96,6 +101,32 @@
         <p>Sistema de Relatórios Connect - Interface de Geração</p>
     </footer>
 
+    <!-- Modal para processar dados brutos -->
+    <div id="rawDataModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Importar Dados Brutos</h2>
+                <button type="button" class="modal-close" id="closeModalBtn">&times;</button>
+            </header>
+            <div class="modal-body">
+                <p>Cole o texto copiado do WhatsApp abaixo:</p>
+                <textarea id="rawDataInput" rows="10" placeholder="Ex:&#10;215 no culto&#10;29 kids&#10;4 tias&#10;1 mãe&#10;15 teens&#10;3 tios"></textarea>
+                
+                <div id="sundayTurnoSelector" style="display: none; margin-top: 15px;">
+                    <p><strong>Por favor, selecione o turno do culto de Domingo:</strong></p>
+                    <label><input type="radio" name="turno" value="Manhã" checked> Manhã</label>
+                    <label style="margin-left: 20px;"><input type="radio" name="turno" value="Noite"> Noite</label>
+                </div>
+
+                <div id="parseFeedbackLog" class="feedback-log"></div>
+            </div>
+            <footer class="modal-footer">
+                <button type="button" class="btn-submit" id="fillFormBtn">Analisar e Preencher Formulário</button>
+            </footer>
+        </div>
+    </div>
+
+    <script src="services/parser.js"></script> <!-- Carrega o parser PRIMEIRO -->
     <script src="script.js"></script>
 </body>
 </html>

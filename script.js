@@ -7,15 +7,102 @@ document.addEventListener('DOMContentLoaded', function() {
     const generateAndShareImageBtn = document.getElementById('generateAndShareImage');
     const hiddenReportForCanvasEl = document.getElementById('hiddenReportForCanvas');
 
+    // --- LÓGICA DO MODAL DE DADOS BRUTOS ---
+    const processRawDataBtn = document.getElementById('processRawDataBtn');
+    const rawDataModal = document.getElementById('rawDataModal');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const rawDataInput = document.getElementById('rawDataInput');
+    const fillFormBtn = document.getElementById('fillFormBtn');
+    const sundayTurnoSelector = document.getElementById('sundayTurnoSelector');
+    const parseFeedbackLogEl = document.getElementById('parseFeedbackLog');
+
     if (!reportForm || !eventNameInput || !generateHtmlReportBtn || !generateAndShareImageBtn || !hiddenReportForCanvasEl || !generationDateEl) {
         console.error("Um ou mais elementos essenciais do DOM não foram encontrados! Verifique os IDs no HTML.");
-        // ... (restante das verificações)
         alert("Erro na inicialização da página. Alguns elementos HTML necessários não foram encontrados. Verifique o console para mais detalhes.");
         return;
     }
 
     updateGenerationDate();
 
+    // --- CONTROLE DO MODAL ---
+    processRawDataBtn.addEventListener('click', () => {
+        rawDataModal.style.display = 'flex';
+        parseFeedbackLogEl.innerHTML = ''; // Limpa o log antigo
+        const today = new Date();
+        // 0 = Domingo
+        if (today.getDay() === 0) {
+            sundayTurnoSelector.style.display = 'block';
+        } else {
+            sundayTurnoSelector.style.display = 'none';
+        }
+    });
+
+    const closeModal = () => {
+        rawDataModal.style.display = 'none';
+        rawDataInput.value = ''; // Limpa o campo ao fechar
+    };
+    closeModalBtn.addEventListener('click', closeModal);
+    rawDataModal.addEventListener('click', (event) => {
+        if (event.target === rawDataModal) {
+            closeModal();
+        }
+    });
+
+    fillFormBtn.addEventListener('click', () => {
+        const rawText = rawDataInput.value;
+        if (!rawText.trim()) {
+            alert('Por favor, cole os dados no campo de texto.');
+            return;
+        }
+
+        // 1. Chamar o parser externo
+        const { parsedData, feedbackLog } = parseRawData(rawText);
+
+        // 2. Exibir o feedback para o usuário
+        parseFeedbackLogEl.innerHTML = ''; // Limpa log anterior
+        feedbackLog.forEach(log => {
+            const p = document.createElement('p');
+            p.textContent = `${log.line} -> ${log.message}`;
+            p.className = log.status === 'success' ? 'log-success' : 'log-ignored';
+            parseFeedbackLogEl.appendChild(p);
+        });
+
+        // 3. Gerar título do evento
+        eventNameInput.value = generateEventTitle();
+
+        // 4. Limpar formulário e preencher com dados analisados
+        const numberInputs = document.querySelectorAll('form#reportForm input[type="number"]');
+        numberInputs.forEach(input => input.value = 0);
+        
+        for (const inputId in parsedData) {
+            const inputElement = document.getElementById(inputId);
+            if (inputElement) {
+                inputElement.value = parsedData[inputId];
+            }
+        }
+    });
+
+    function generateEventTitle() {
+        const today = new Date();
+        const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const dayOfWeek = today.getDay(); // 0: Domingo, ..., 3: Quarta
+        
+        const weekDays = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+        
+        if (dayOfWeek === 3) { // Quarta-feira
+            return `Culto de Quarta-feira - ${dateString}`;
+        }
+        
+        if (dayOfWeek === 0) { // Domingo
+            const selectedTurno = document.querySelector('input[name="turno"]:checked').value;
+            return `Culto do dia ${dateString} (${weekDays[dayOfWeek]} - ${selectedTurno})`;
+        }
+        
+        // Padrão para outros dias
+        return `Culto do dia ${dateString} (${weekDays[dayOfWeek]})`;
+    }
+
+    // --- LÓGICA ORIGINAL DO RELATÓRIO ---
     function getFormData() {
         const eventName = eventNameInput.value.trim();
         if (!eventName) {
@@ -28,12 +115,12 @@ document.addEventListener('DOMContentLoaded', function() {
             { grupo: 'Culto', categoria: 'Culto', descricao: 'Presentes', id: 'cultoPresentes' },
             { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Bebês', id: 'babiesCriancas' },
             { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Mães', id: 'babiesMaes' },
-            { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Tio(a) / Voluntário(a)', id: 'babiesResponsaveis' }, // Ajustado
+            { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Tio(a) / Voluntário(a)', id: 'babiesResponsaveis' },
             { grupo: 'Kids', categoria: 'Kids', descricao: 'Crianças', id: 'kidsCriancas' },
             { grupo: 'Kids', categoria: 'Kids', descricao: 'Mães', id: 'kidsMaes' },
-            { grupo: 'Kids', categoria: 'Kids', descricao: 'Tio(a) / Voluntário(a)', id: 'kidsTias' },          // Ajustado
+            { grupo: 'Kids', categoria: 'Kids', descricao: 'Tio(a) / Voluntário(a)', id: 'kidsTias' },
             { grupo: 'Teens', categoria: 'Teens', descricao: 'Adolescentes', id: 'teensAdolescentes' },
-            { grupo: 'Teens', categoria: 'Teens', descricao: 'Tio(a) / Voluntário(a)', id: 'teensTios' }        // Ajustado
+            { grupo: 'Teens', categoria: 'Teens', descricao: 'Tio(a) / Voluntário(a)', id: 'teensTios' }
         ];
 
         const reportData = [];
@@ -178,10 +265,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (entriesToDisplay.length === 0 && total === 0) {
             tableContentHTML = `<tr><td colspan="3" style="text-align: center; font-style: italic;">Nenhuma contagem registrada.</td></tr>`;
         } else if (entriesToDisplay.length === 0 && total > 0) {
-            // Se todas as entradas individuais forem zero (e estivermos filtrando), mas o total for > 0 (o que não deve acontecer se o total for a soma das entradas)
-            // Esta mensagem é mais para o caso de o total ser calculado de forma independente e ainda quisermos mostrar.
-            // No cenário atual, se entriesToDisplay.length é 0 após o filtro, o total das entradas visíveis também seria 0.
-            // A linha de total geral ainda será mostrada se o `total` (original, não filtrado) for > 0.
             tableContentHTML = `<tr><td colspan="3" style="text-align: center; font-style: italic;">Nenhuma contagem individual para exibir.</td></tr>`;
         } else {
             entriesToDisplay.forEach(entry => {
@@ -196,7 +279,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         let totalRowHtml = '';
-        // Mostra a linha de total se houver entradas visíveis OU se o total geral for maior que zero (mesmo que todas as individuais sejam zeradas e filtradas)
         if (entriesToDisplay.length > 0 || total > 0) {
             totalRowHtml = `
                 <tr class="total">
@@ -213,7 +295,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const styles = getReportStylesForCanvas();
         const tableRowsHtml = generateReportTableContentHtml(data, total, filterZerosForImage);
 
-        // Removido o comentário do padding que estava aparecendo na imagem
         return `
             ${styles} 
             <div class="container" style="width:100%; max-width:100%; margin:0; padding:0; box-shadow:none; border-radius:0; background-color: white;"> 
@@ -254,10 +335,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function getReportStyles(isForCanvas = false) {
         const headerH1Size = isForCanvas ? '1.6em' : '1.8em';
-        // Aumentando o H2 do nome do evento especificamente para o canvas e centralizando
-        const tableSectionH2Size = isForCanvas ? '1.5em' : '1.4em'; // Aumentado para o canvas
+        const tableSectionH2Size = isForCanvas ? '1.5em' : '1.4em'; 
         const tableSectionH2TextAlign = isForCanvas ? 'center' : 'left';
-        const tableSectionH2MarginBottom = isForCanvas ? '20px' : '15px'; // Mais espaço abaixo do título na imagem
+        const tableSectionH2MarginBottom = isForCanvas ? '20px' : '15px'; 
 
         const tableCellPadding = isForCanvas ? '10px 8px' : '12px 15px';
         const tableCellFontSize = isForCanvas ? '0.9em' : '0.95em';
@@ -306,18 +386,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 font-size: ${headerH1Size}; 
                 font-weight: 600;
             }
-            .report-output-container { /* Usado pelo HTML gerado para download */
+            .report-output-container {
                 padding: ${reportOutputPadding}; 
             }
-            .table-section h2 { /* Nome do Evento */
+            .table-section h2 {
                 color: var(--primary-color);
                 font-size: ${tableSectionH2Size}; 
-                font-weight: 600; /* Dando um pouco mais de peso */
+                font-weight: 600;
                 text-align: ${tableSectionH2TextAlign};
                 margin-top: 0;
                 margin-bottom: ${tableSectionH2MarginBottom}; 
                 border-bottom: 1px solid var(--border-color);
-                padding-bottom: 10px; /* Mantido para a linha */
+                padding-bottom: 10px;
             }
             table {
                 width: 100%;
