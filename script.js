@@ -80,6 +80,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 inputElement.value = parsedData[inputId];
             }
         }
+        
+        // --- ALTERAÇÃO REALIZADA ---
+        // Adicionado para notificar o usuário e fechar o modal automaticamente.
+        alert('Formulário analisado e preenchido com sucesso!');
+        closeModal();
+        // --- FIM DA ALTERAÇÃO ---
     });
 
     function generateEventTitle() {
