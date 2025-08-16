@@ -118,11 +118,48 @@
                     <label style="margin-left: 20px;"><input type="radio" name="turno" value="Noite"> Noite</label>
                 </div>
 
-                <!-- Elemento para exibir o feedback do parse -->
+                <!-- NOVO: Div para o resumo do log -->
+                <div id="parseFeedbackSummary" class="feedback-summary" style="display: none;"></div>
                 <div id="parseFeedbackLog" class="feedback-log"></div>
             </div>
             <footer class="modal-footer">
                 <button type="button" class="btn-submit" id="fillFormBtn">Analisar e Preencher Formulário</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- NOVO: Modal/Overlay para Associar Termo -->
+    <div id="associateTermModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Associar Termo</h2>
+                <button type="button" class="modal-close" id="closeAssociateModalBtn">&times;</button>
+            </header>
+            <div class="modal-body">
+                <p>Linha Original: <strong id="originalLineToAssociate"></strong></p>
+                <div class="form-group">
+                    <label for="associateKeyword">Termo (Palavra-chave):</label>
+                    <input type="text" id="associateKeyword" placeholder="Ex: 'participantes', 'culto principal'">
+                    <small>Qual palavra ou frase nesta linha deve ser associada?</small>
+                </div>
+                <div class="form-group">
+                    <label for="associateField">Associar ao Campo:</label>
+                    <select id="associateField">
+                        <option value="">Selecione um campo</option>
+                        <option value="cultoPresentes">Culto: Presentes</option>
+                        <option value="babiesCriancas">Babies: Bebês</option>
+                        <option value="babiesMaes">Babies: Mães</option>
+                        <option value="babiesResponsaveis">Babies: Tio(a) / Voluntário(a)</option>
+                        <option value="kidsCriancas">Kids: Crianças</option>
+                        <option value="kidsMaes">Kids: Mães</option>
+                        <option value="kidsTias">Kids: Tio(a) / Voluntário(a)</option>
+                        <option value="teensAdolescentes">Teens: Adolescentes</option>
+                        <option value="teensTios">Teens: Tio(a) / Voluntário(a)</option>
+                    </select>
+                </div>
+            </div>
+            <footer class="modal-footer">
+                <button type="button" class="btn-submit" id="saveAssociationBtn">Salvar Associação</button>
             </footer>
         </div>
     </div>
