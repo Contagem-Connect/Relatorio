@@ -27,7 +27,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let currentLineToAssociate = ''; // Armazena a linha que o usuário está corrigindo
 
-    if (!reportForm || !eventNameInput || !generateHtmlReportBtn || !generateAndShareImageBtn || !hiddenReportForCanvasEl || !generationDateEl || !parseFeedbackSummaryEl || !associateTermModal || !closeAssociateModalBtn || !originalLineToAssociateEl || !associateKeywordInput || !associateFieldSelect || !saveAssociationBtn) {
+    // Verifica se as funções do parser estão disponíveis globalmente.
+    // Elas devem ser expostas no services/parser.js (e.g., window.saveCustomMapping = saveCustomMapping;)
+    if (typeof parseRawData === 'undefined' || typeof saveCustomMapping === 'undefined' || typeof normalizeText === 'undefined') {
+        console.error("Funções do parser (parseRawData, saveCustomMapping, normalizeText) não encontradas globalmente. Verifique services/parser.js.");
+        alert("Erro na inicialização: Funções essenciais do parser não carregadas. Verifique o console.");
+        return;
+    }
+
+    if (!reportForm || !eventNameInput || !generateHtmlReportBtn || !generateAndShareImageBtn || !hiddenReportForCanvasEl || !generationDateEl || !processRawDataBtn || !rawDataModal || !closeModalBtn || !rawDataInput || !fillFormBtn || !sundayTurnoSelector || !parseFeedbackLogEl || !parseFeedbackSummaryEl || !associateTermModal || !closeAssociateModalBtn || !originalLineToAssociateEl || !associateKeywordInput || !associateFieldSelect || !saveAssociationBtn) {
         console.error("Um ou mais elementos essenciais do DOM não foram encontrados! Verifique os IDs no HTML.");
         alert("Erro na inicialização da página. Alguns elementos HTML necessários não foram encontrados. Verifique o console para mais detalhes.");
         return;
@@ -40,7 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
         rawDataModal.style.display = 'flex';
         rawDataInput.value = ''; // Limpa o campo ao abrir
         parseFeedbackLogEl.innerHTML = ''; // Limpa o log antigo
-        parseFeedbackSummaryEl.style.display = 'none'; // Esconde o resumo
+        parseFeedbackSummaryEl.style.display = 'none'; // Esconde o resumo ao abrir
         const today = new Date();
         // 0 = Domingo
         if (today.getDay() === 0) {
@@ -71,8 +79,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // 1. Chamar o parser externo e obter os dados e o log de feedback
-        // A função parseRawData (em services/parser.js) agora retorna um feedbackLog
+        // 1. Chamar o parser externo (agora com lógica de contexto e personalização)
         const { parsedData, feedbackLog } = parseRawData(rawText);
 
         // 2. Exibir o feedback visual para o usuário
@@ -96,10 +103,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const associateBtn = document.createElement('button');
                 associateBtn.textContent = 'Associar';
                 associateBtn.className = 'associate-btn';
-                associateBtn.onclick = (e) => {
-                    e.stopPropagation(); // Impede que o click do parágrafo seja propagado, se houvesse
-                    openAssociateModal(log.line); // Passa a linha original para o modal
-                };
+                associateBtn.onclick = () => openAssociateModal(log.line); // Passa a linha original
                 p.appendChild(associateBtn);
             }
             parseFeedbackLogEl.appendChild(p);
@@ -122,29 +126,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        alert('Formulário analisado e preenchido com sucesso! Verifique o log de feedback abaixo para detalhes.');
+        alert('Formulário analisado e preenchido com sucesso! Verifique o log de feedback abaixo para detalhes e para ensinar o sistema.');
         // Não fechar o modal automaticamente para permitir a visualização do log e interação com o botão "Associar"
     });
-
-    function generateEventTitle() {
-        const today = new Date();
-        const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const dayOfWeek = today.getDay(); // 0: Domingo, ..., 3: Quarta
-        
-        const weekDays = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-        
-        if (dayOfWeek === 3) { // Quarta-feira
-            return `Culto de Quarta-feira - ${dateString}`;
-        }
-        
-        if (dayOfWeek === 0) { // Domingo
-            const selectedTurno = document.querySelector('input[name="turno"]:checked').value;
-            return `Culto do dia ${dateString} (${weekDays[dayOfWeek]} - ${selectedTurno})`;
-        }
-        
-        // Padrão para outros dias
-        return `Culto do dia ${dateString} (${weekDays[dayOfWeek]})`;
-    }
 
     // --- NOVAS FUNÇÕES PARA O RESUMO DO FEEDBACK ---
     function displayFeedbackSummary(success, ignored) {
@@ -166,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (ignored > 0 && success === 0) {
             icon = '❌';
             message = `Nenhuma linha reconhecida. ${ignored} linhas ignoradas.`;
-            className += ' warning-summary';
+            className += ' warning-summary'; 
         } else { // Ambos 0, caso de texto vazio ou irrelevante
             parseFeedbackSummaryEl.style.display = 'none'; // Não mostrar resumo se não houver dados
             return;
@@ -182,14 +166,17 @@ document.addEventListener('DOMContentLoaded', function() {
         originalLineToAssociateEl.textContent = originalLine;
         associateKeywordInput.value = ''; // Limpa campo de termo
         associateFieldSelect.value = ''; // Limpa seleção
+        // Tenta pré-preencher o campo de termo com palavras da linha original
+        const wordsInLine = normalizeText(originalLine).split(' ').filter(word => word.length > 2);
+        if (wordsInLine.length > 0) {
+            associateKeywordInput.value = wordsInLine[0]; // Pega a primeira palavra como sugestão
+        }
         associateTermModal.style.display = 'flex'; // Exibe o modal
     }
 
     function closeAssociateModal() {
         associateTermModal.style.display = 'none';
         currentLineToAssociate = '';
-        associateKeywordInput.value = '';
-        associateFieldSelect.value = '';
     }
 
     closeAssociateModalBtn.addEventListener('click', closeAssociateModal);
@@ -213,21 +200,40 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Chamar a função para salvar o mapeamento (exposta por parser.js)
-        // A função 'normalizeText' também deve estar disponível (expomos ela em services/parser.js)
+        // Usa `window.` para garantir o acesso global, se `parser.js` não for um módulo ES6.
         if (typeof window.saveCustomMapping !== 'undefined' && typeof window.normalizeText !== 'undefined') {
             window.saveCustomMapping({ keywords: [window.normalizeText(keyword)], inputId: inputId });
             alert(`Termo "${keyword}" associado a "${inputId}" com sucesso! O sistema tentará reconhecê-lo nas próximas vezes.`);
             closeAssociateModal();
-            // Opcional: Re-executar parseRawData para aplicar o novo mapeamento imediatamente
-            fillFormBtn.click(); // Simula um clique para reprocessar
+            // Re-executa o parsing para aplicar o novo mapeamento imediatamente
+            fillFormBtn.click(); 
         } else {
-            console.error("Função saveCustomMapping ou normalizeText não encontrada. Verifique services/parser.js.");
+            console.error("Função saveCustomMapping ou normalizeText não encontrada em window. Verifique services/parser.js.");
             alert("Erro: Não foi possível salvar o mapeamento personalizado. Consulte o console.");
         }
     });
 
+    // --- LÓGICA ORIGINAL DO RELATÓRIO --- (mantida inalterada)
+    function generateEventTitle() {
+        const today = new Date();
+        const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const dayOfWeek = today.getDay(); // 0: Domingo, ..., 3: Quarta
+        
+        const weekDays = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+        
+        if (dayOfWeek === 3) { // Quarta-feira
+            return `Culto de Quarta-feira - ${dateString}`;
+        }
+        
+        if (dayOfWeek === 0) { // Domingo
+            const selectedTurno = document.querySelector('input[name="turno"]:checked').value;
+            return `Culto do dia ${dateString} (${weekDays[dayOfWeek]} - ${selectedTurno})`;
+        }
+        
+        // Padrão para outros dias
+        return `Culto do dia ${dateString} (${weekDays[dayOfWeek]})`;
+    }
 
-    // --- LÓGICA ORIGINAL DO RELATÓRIO (MANTIDA) ---
     function getFormData() {
         const eventName = eventNameInput.value.trim();
         if (!eventName) {
