@@ -1,5 +1,3 @@
-// script.js
-
 document.addEventListener('DOMContentLoaded', function() {
     const reportForm = document.getElementById('reportForm');
     const generationDateEl = document.getElementById('generationDate');
@@ -16,11 +14,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const rawDataInput = document.getElementById('rawDataInput');
     const fillFormBtn = document.getElementById('fillFormBtn');
     const sundayTurnoSelector = document.getElementById('sundayTurnoSelector');
-    const parseFeedbackLogEl = document.getElementById('parseFeedbackLog'); // Elemento para exibir o log de feedback
+    const parseFeedbackLogEl = document.getElementById('parseFeedbackLog');
 
-    // Verifica se todos os elementos essenciais foram encontrados
-    if (!reportForm || !eventNameInput || !generateHtmlReportBtn || !generateAndShareImageBtn || !hiddenReportForCanvasEl || !generationDateEl ||
-        !processRawDataBtn || !rawDataModal || !closeModalBtn || !rawDataInput || !fillFormBtn || !sundayTurnoSelector || !parseFeedbackLogEl) {
+    // --- NOVOS ELEMENTOS PARA O RESUMO E MODAL DE ASSOCIAÇÃO ---
+    const parseFeedbackSummaryEl = document.getElementById('parseFeedbackSummary');
+    const associateTermModal = document.getElementById('associateTermModal');
+    const closeAssociateModalBtn = document.getElementById('closeAssociateModalBtn');
+    const originalLineToAssociateEl = document.getElementById('originalLineToAssociate');
+    const associateKeywordInput = document.getElementById('associateKeyword');
+    const associateFieldSelect = document.getElementById('associateField');
+    const saveAssociationBtn = document.getElementById('saveAssociationBtn');
+
+    let currentLineToAssociate = ''; // Armazena a linha que o usuário está corrigindo
+
+    if (!reportForm || !eventNameInput || !generateHtmlReportBtn || !generateAndShareImageBtn || !hiddenReportForCanvasEl || !generationDateEl || !parseFeedbackSummaryEl || !associateTermModal || !closeAssociateModalBtn || !originalLineToAssociateEl || !associateKeywordInput || !associateFieldSelect || !saveAssociationBtn) {
         console.error("Um ou mais elementos essenciais do DOM não foram encontrados! Verifique os IDs no HTML.");
         alert("Erro na inicialização da página. Alguns elementos HTML necessários não foram encontrados. Verifique o console para mais detalhes.");
         return;
@@ -28,13 +35,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     updateGenerationDate();
 
-    // --- CONTROLE DO MODAL ---
+    // --- CONTROLE DO MODAL DE DADOS BRUTOS ---
     processRawDataBtn.addEventListener('click', () => {
         rawDataModal.style.display = 'flex';
-        rawDataInput.value = ''; // Limpa o campo de texto ao abrir o modal
-        parseFeedbackLogEl.innerHTML = ''; // Limpa o log de feedback ao abrir o modal
+        rawDataInput.value = ''; // Limpa o campo ao abrir
+        parseFeedbackLogEl.innerHTML = ''; // Limpa o log antigo
+        parseFeedbackSummaryEl.style.display = 'none'; // Esconde o resumo
         const today = new Date();
-        // Se for domingo, mostra a opção de turno
+        // 0 = Domingo
         if (today.getDay() === 0) {
             sundayTurnoSelector.style.display = 'block';
         } else {
@@ -45,7 +53,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const closeModal = () => {
         rawDataModal.style.display = 'none';
         rawDataInput.value = ''; // Limpa o campo ao fechar
-        parseFeedbackLogEl.innerHTML = ''; // Limpa o log ao fechar para a próxima interação
+        parseFeedbackLogEl.innerHTML = ''; // Limpa o log ao fechar
+        parseFeedbackSummaryEl.style.display = 'none'; // Esconde o resumo ao fechar
     };
     closeModalBtn.addEventListener('click', closeModal);
     rawDataModal.addEventListener('click', (event) => {
@@ -54,51 +63,69 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // --- LÓGICA DE PREENCHIMENTO DO FORMULÁRIO E FEEDBACK ---
     fillFormBtn.addEventListener('click', () => {
         const rawText = rawDataInput.value;
         if (!rawText.trim()) {
-            alert('Por favor, cole os dados no campo de texto antes de analisar.');
+            alert('Por favor, cole os dados no campo de texto.');
             return;
         }
 
-        // 1. Chamar o parser externo e obter os dados analisados E o log de feedback
+        // 1. Chamar o parser externo e obter os dados e o log de feedback
+        // A função parseRawData (em services/parser.js) agora retorna um feedbackLog
         const { parsedData, feedbackLog } = parseRawData(rawText);
 
-        // 2. Exibir o feedback visual para o usuário no modal
-        parseFeedbackLogEl.innerHTML = ''; // Limpa o log anterior antes de preencher novamente
+        // 2. Exibir o feedback visual para o usuário
+        parseFeedbackLogEl.innerHTML = ''; // Limpa log anterior
+        let successCount = 0;
+        let ignoredCount = 0;
+
         feedbackLog.forEach(log => {
             const p = document.createElement('p');
-            // Formata a mensagem com a linha original e a explicação do parser
+            // 'log.line' é a linha original do texto colado
+            // 'log.message' é a explicação do parser
             p.textContent = `${log.line} -> ${log.message}`;
-            // Aplica a classe CSS baseada no status (log-success ou log-ignored)
+            // Aplica a classe CSS baseada no status (success ou ignored)
             p.className = log.status === 'success' ? 'log-success' : 'log-ignored';
+
+            if (log.status === 'success') {
+                successCount++;
+            } else {
+                ignoredCount++;
+                // Adicionar botão "Associar" para linhas ignoradas
+                const associateBtn = document.createElement('button');
+                associateBtn.textContent = 'Associar';
+                associateBtn.className = 'associate-btn';
+                associateBtn.onclick = (e) => {
+                    e.stopPropagation(); // Impede que o click do parágrafo seja propagado, se houvesse
+                    openAssociateModal(log.line); // Passa a linha original para o modal
+                };
+                p.appendChild(associateBtn);
+            }
             parseFeedbackLogEl.appendChild(p);
         });
 
-        // 3. Gerar o título do evento automaticamente
+        // 3. Exibir o resumo do log
+        displayFeedbackSummary(successCount, ignoredCount);
+
+        // 4. Gerar título do evento
         eventNameInput.value = generateEventTitle();
 
-        // 4. Limpar o formulário atual e preencher com os dados analisados
+        // 5. Limpar formulário e preencher com dados analisados
         const numberInputs = document.querySelectorAll('form#reportForm input[type="number"]');
-        numberInputs.forEach(input => input.value = 0); // Reseta todos os campos numéricos para zero
+        numberInputs.forEach(input => input.value = 0);
         
-        // Preenche o formulário com os dados do parser
         for (const inputId in parsedData) {
             const inputElement = document.getElementById(inputId);
             if (inputElement) {
                 inputElement.value = parsedData[inputId];
-            } else {
-                console.warn(`Tentativa de preencher campo com ID '${inputId}' que não existe no formulário.`);
             }
         }
         
-        // Alerta o usuário e direciona para o log (modal permanece aberto)
-        alert('Formulário analisado e preenchido com sucesso! Por favor, verifique o log de feedback abaixo para detalhes.');
-        // O modal permanece aberto para que o usuário possa visualizar o log.
-        // Ocultar o modal ficaria a critério de uma UX futura.
+        alert('Formulário analisado e preenchido com sucesso! Verifique o log de feedback abaixo para detalhes.');
+        // Não fechar o modal automaticamente para permitir a visualização do log e interação com o botão "Associar"
     });
 
-    // Função para gerar o título do evento baseado no dia da semana
     function generateEventTitle() {
         const today = new Date();
         const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -111,17 +138,96 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         if (dayOfWeek === 0) { // Domingo
-            // Pega o turno selecionado no rádio button
-            const selectedTurnoEl = document.querySelector('input[name="turno"]:checked');
-            const selectedTurno = selectedTurnoEl ? selectedTurnoEl.value : 'Turno Não Selecionado';
-            return `Culto de ${weekDays[dayOfWeek]} - ${selectedTurno} - ${dateString}`;
+            const selectedTurno = document.querySelector('input[name="turno"]:checked').value;
+            return `Culto do dia ${dateString} (${weekDays[dayOfWeek]} - ${selectedTurno})`;
         }
         
-        // Padrão para outros dias da semana
-        return `Culto de ${weekDays[dayOfWeek]} - ${dateString}`;
+        // Padrão para outros dias
+        return `Culto do dia ${dateString} (${weekDays[dayOfWeek]})`;
     }
 
-    // --- LÓGICA ORIGINAL DO RELATÓRIO (mantida) ---
+    // --- NOVAS FUNÇÕES PARA O RESUMO DO FEEDBACK ---
+    function displayFeedbackSummary(success, ignored) {
+        parseFeedbackSummaryEl.innerHTML = ''; // Limpa qualquer resumo anterior
+        parseFeedbackSummaryEl.style.display = 'block'; // Mostra o contêiner
+
+        let icon = '';
+        let message = '';
+        let className = 'feedback-summary';
+
+        if (ignored === 0 && success > 0) {
+            icon = '✅';
+            message = `Todas as ${success} linhas foram reconhecidas com sucesso!`;
+            className += ' success-summary';
+        } else if (success > 0 && ignored > 0) {
+            icon = '⚠️';
+            message = `${success} linhas reconhecidas, ${ignored} linhas ignoradas.`;
+            className += ' warning-summary';
+        } else if (ignored > 0 && success === 0) {
+            icon = '❌';
+            message = `Nenhuma linha reconhecida. ${ignored} linhas ignoradas.`;
+            className += ' warning-summary';
+        } else { // Ambos 0, caso de texto vazio ou irrelevante
+            parseFeedbackSummaryEl.style.display = 'none'; // Não mostrar resumo se não houver dados
+            return;
+        }
+
+        parseFeedbackSummaryEl.className = className; // Aplica as classes dinamicamente
+        parseFeedbackSummaryEl.innerHTML = `<span class="icon">${icon}</span> ${message}`;
+    }
+
+    // --- NOVAS FUNÇÕES PARA O MODAL DE ASSOCIAÇÃO ---
+    function openAssociateModal(originalLine) {
+        currentLineToAssociate = originalLine;
+        originalLineToAssociateEl.textContent = originalLine;
+        associateKeywordInput.value = ''; // Limpa campo de termo
+        associateFieldSelect.value = ''; // Limpa seleção
+        associateTermModal.style.display = 'flex'; // Exibe o modal
+    }
+
+    function closeAssociateModal() {
+        associateTermModal.style.display = 'none';
+        currentLineToAssociate = '';
+        associateKeywordInput.value = '';
+        associateFieldSelect.value = '';
+    }
+
+    closeAssociateModalBtn.addEventListener('click', closeAssociateModal);
+    associateTermModal.addEventListener('click', (event) => {
+        if (event.target === associateTermModal) {
+            closeAssociateModal();
+        }
+    });
+
+    saveAssociationBtn.addEventListener('click', () => {
+        const keyword = associateKeywordInput.value.trim();
+        const inputId = associateFieldSelect.value;
+
+        if (!keyword) {
+            alert('Por favor, digite o termo (palavra-chave) a ser associado.');
+            return;
+        }
+        if (!inputId) {
+            alert('Por favor, selecione o campo ao qual o termo será associado.');
+            return;
+        }
+
+        // Chamar a função para salvar o mapeamento (exposta por parser.js)
+        // A função 'normalizeText' também deve estar disponível (expomos ela em services/parser.js)
+        if (typeof window.saveCustomMapping !== 'undefined' && typeof window.normalizeText !== 'undefined') {
+            window.saveCustomMapping({ keywords: [window.normalizeText(keyword)], inputId: inputId });
+            alert(`Termo "${keyword}" associado a "${inputId}" com sucesso! O sistema tentará reconhecê-lo nas próximas vezes.`);
+            closeAssociateModal();
+            // Opcional: Re-executar parseRawData para aplicar o novo mapeamento imediatamente
+            fillFormBtn.click(); // Simula um clique para reprocessar
+        } else {
+            console.error("Função saveCustomMapping ou normalizeText não encontrada. Verifique services/parser.js.");
+            alert("Erro: Não foi possível salvar o mapeamento personalizado. Consulte o console.");
+        }
+    });
+
+
+    // --- LÓGICA ORIGINAL DO RELATÓRIO (MANTIDA) ---
     function getFormData() {
         const eventName = eventNameInput.value.trim();
         if (!eventName) {
@@ -130,7 +236,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return null;
         }
 
-        // Configuração das entradas de dados para o relatório
         const dataEntriesConfig = [
             { grupo: 'Culto', categoria: 'Culto', descricao: 'Presentes', id: 'cultoPresentes' },
             { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Bebês', id: 'babiesCriancas' },
@@ -149,7 +254,7 @@ document.addEventListener('DOMContentLoaded', function() {
         dataEntriesConfig.forEach(entryConfig => {
             const inputElement = document.getElementById(entryConfig.id);
             if (inputElement) {
-                const quantidade = parseInt(inputElement.value) || 0; // Garante que seja um número, 0 se vazio
+                const quantidade = parseInt(inputElement.value) || 0;
                 reportData.push({
                     categoria: entryConfig.categoria,
                     descricao: entryConfig.descricao,
@@ -157,30 +262,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 totalGeral += quantidade;
             } else {
-                console.warn(`Elemento de input com ID '${entryConfig.id}' não encontrado ao coletar dados.`);
+                console.warn(`Elemento de input com ID '${entryConfig.id}' não encontrado.`);
             }
         });
         return { eventName, reportData, totalGeral };
     }
 
     reportForm.addEventListener('submit', function(event) {
-        event.preventDefault(); // Impede o envio padrão do formulário
+        event.preventDefault();
         handleGenerateHtmlReport();
     });
     
     function handleGenerateHtmlReport() {
         try {
             const formData = getFormData();
-            if (!formData) return; // Se a validação falhar, para aqui
+            if (!formData) return;
 
             const { eventName, reportData, totalGeral } = formData;
-            const currentDateString = updateGenerationDateAndGetIt(); // Obtém e atualiza a data/hora
-
+            const currentDateString = updateGenerationDateAndGetIt();
             const fullHtmlReport = generateFullHtmlReportString(eventName, reportData, totalGeral, currentDateString);
             downloadHtmlReport(fullHtmlReport, eventName, currentDateString);
         } catch (error) {
             console.error("Erro ao gerar relatório HTML:", error);
-            alert("Ocorreu um erro ao gerar o relatório HTML. Verifique o console para mais detalhes.");
+            alert("Ocorreu um erro ao gerar o relatório HTML. Verifique o console.");
         }
     }
 
@@ -192,11 +296,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const { eventName, reportData, totalGeral } = formData;
             const currentDateString = updateGenerationDateAndGetIt();
 
-            // Gera o HTML do conteúdo do relatório que será capturado pela imagem
             const reportContentHtml = generateReportVisualContentHtml(eventName, reportData, totalGeral, currentDateString, true);
-            hiddenReportForCanvasEl.innerHTML = reportContentHtml; // Injeta no elemento escondido
+            hiddenReportForCanvasEl.innerHTML = reportContentHtml;
             
-            // Seleciona o elemento real a ser capturado dentro do div escondido
             const elementToCapture = hiddenReportForCanvasEl.querySelector('.container');
             if (!elementToCapture) {
                 console.error("Elemento '.container' dentro de '#hiddenReportForCanvas' não encontrado para captura.");
@@ -204,24 +306,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // Feedback visual enquanto a imagem é gerada
             this.textContent = 'Gerando imagem...';
             this.disabled = true;
 
-            // Usa html2canvas para capturar a imagem do elemento
             const canvas = await html2canvas(elementToCapture, { 
-                useCORS: true, // Importante se houver imagens externas
-                scale: 1.5, // Aumenta a resolução da imagem para melhor qualidade
-                logging: false, // Desabilita logs do html2canvas no console
+                useCORS: true,
+                scale: 1.5,
+                logging: false,
                 onclone: (clonedDoc) => {
-                    // Garante que os estilos do relatório sejam embutidos no DOM clonado
                     const styleSheet = clonedDoc.createElement("style");
                     styleSheet.innerHTML = getReportStylesForCanvas();
                     clonedDoc.head.appendChild(styleSheet);
                 }
             });
 
-            // Converte o canvas para um Blob (Binary Large Object)
             canvas.toBlob(async function(blob) {
                 if (!blob) {
                     alert('Erro ao gerar imagem (blob nulo).');
@@ -229,12 +327,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     generateAndShareImageBtn.disabled = false;
                     return;
                 }
-                // Cria um nome de arquivo seguro para download
                 const safeEventName = eventName.replace(/[^a-z0-9_-\s]/gi, '_').replace(/\s+/g, '_');
                 const safeDate = currentDateString.replace(/[\/:]/g, '-').replace(/\s/g, '_');
                 const fileName = `Relatorio_Connect_${safeEventName}_${safeDate}.png`;
                 
-                // Prepara os dados para a Web Share API
                 const filesArray = [new File([blob], fileName, { type: 'image/png' })];
                 const shareData = {
                     title: `Relatório: ${eventName}`,
@@ -242,61 +338,51 @@ document.addEventListener('DOMContentLoaded', function() {
                     files: filesArray,
                 };
 
-                // Tenta usar a Web Share API para compartilhar a imagem
                 if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
                     try {
                         await navigator.share(shareData);
                         console.log('Relatório compartilhado com sucesso!');
                     } catch (err) {
                         console.error('Erro ao compartilhar:', err);
-                        // Se o compartilhamento for cancelado ou falhar (exceto por AbortError), oferece download
-                        if (err.name !== 'AbortError') { // AbortError significa que o usuário cancelou o compartilhamento
-                           alert(`Erro ao compartilhar: ${err.message}. A imagem será baixada.`);
+                        if (err.name !== 'AbortError') {
+                           alert(`Erro ao compartilhar: ${err.message}. Você pode tentar baixar a imagem.`);
                            downloadImage(blob, fileName);
-                        } else {
-                            console.log('Compartilhamento cancelado pelo usuário.');
                         }
                     }
                 } else {
-                    // Fallback para download se Web Share API não for suportada
                     alert('Seu navegador não suporta compartilhamento direto de imagens. A imagem será baixada para compartilhamento manual.');
                     downloadImage(blob, fileName);
                 }
                 
-                // Restaura o botão e limpa o conteúdo do elemento escondido
                 generateAndShareImageBtn.textContent = 'Gerar e Compartilhar Imagem (WhatsApp)';
                 generateAndShareImageBtn.disabled = false;
                 hiddenReportForCanvasEl.innerHTML = '';
 
-            }, 'image/png', 0.95); // Qualidade da imagem (0 a 1)
+            }, 'image/png', 0.95);
 
         } catch (error) {
             console.error("Erro ao gerar/compartilhar imagem:", error);
             alert("Ocorreu um erro ao gerar ou compartilhar a imagem. Verifique o console.");
-            // Garante que o botão seja reativado mesmo em caso de erro
             generateAndShareImageBtn.textContent = 'Gerar e Compartilhar Imagem (WhatsApp)';
             generateAndShareImageBtn.disabled = false;
             hiddenReportForCanvasEl.innerHTML = '';
         }
     });
 
-    // Função auxiliar para baixar um Blob como arquivo
     function downloadImage(blob, fileName) {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = fileName;
-        document.body.appendChild(a); // Necessário para simular o clique
+        document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(a.href); // Libera o URL do objeto
+        URL.revokeObjectURL(a.href);
     }
 
-    // Gera o conteúdo HTML da tabela do relatório
     function generateReportTableContentHtml(data, total, filterZeros = false) {
         let tableContentHTML = '';
         let entriesToDisplay = data;
 
-        // Filtra categorias com quantidade zero se filterZeros for true (para imagem)
         if (filterZeros) {
             entriesToDisplay = data.filter(entry => entry.quantidade > 0);
         }
@@ -304,7 +390,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (entriesToDisplay.length === 0 && total === 0) {
             tableContentHTML = `<tr><td colspan="3" style="text-align: center; font-style: italic;">Nenhuma contagem registrada.</td></tr>`;
         } else if (entriesToDisplay.length === 0 && total > 0) {
-            // Caso especial para quando só o total é relevante, mas nenhuma categoria individual é > 0
             tableContentHTML = `<tr><td colspan="3" style="text-align: center; font-style: italic;">Nenhuma contagem individual para exibir.</td></tr>`;
         } else {
             entriesToDisplay.forEach(entry => {
@@ -319,7 +404,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         let totalRowHtml = '';
-        if (entriesToDisplay.length > 0 || total > 0) { // Garante que a linha do total aparece se houver dados ou total > 0
+        if (entriesToDisplay.length > 0 || total > 0) {
             totalRowHtml = `
                 <tr class="total">
                     <td>Total</td>
@@ -331,7 +416,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return tableContentHTML + totalRowHtml;
     }
 
-    // Gera o HTML completo para o relatório visual (usado para imagem)
     function generateReportVisualContentHtml(eventName, data, total, generationDate, filterZerosForImage) {
         const styles = getReportStylesForCanvas();
         const tableRowsHtml = generateReportTableContentHtml(data, total, filterZerosForImage);
@@ -366,19 +450,15 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
     
-    // Retorna os estilos CSS específicos para a captura de imagem
     function getReportStylesForCanvas() {
         return getReportStyles(true);
     }
 
-    // Retorna os estilos CSS específicos para o download de HTML
     function getReportStylesForHtmlDownload() {
         return getReportStyles(false);
     }
     
-    // Função centralizada para definir estilos CSS, com adaptação para canvas/HTML
     function getReportStyles(isForCanvas = false) {
-        // Ajustes de tamanho e espaçamento para otimização em imagem (canvas) vs. HTML completo
         const headerH1Size = isForCanvas ? '1.6em' : '1.8em';
         const tableSectionH2Size = isForCanvas ? '1.5em' : '1.4em'; 
         const tableSectionH2TextAlign = isForCanvas ? 'center' : 'left';
@@ -408,7 +488,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             body { 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background-color: white; /* Fundo branco para a imagem */
+                background-color: white; 
                 color: var(--dark-color);
                 line-height: 1.5; 
                 -webkit-font-smoothing: antialiased;
@@ -416,8 +496,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             .container { 
                 background-color: white;
-                border-radius: 0; /* Remove bordas arredondadas para a imagem */
-                box-shadow: none; /* Remove sombra para a imagem */
+                border-radius: 0; 
+                box-shadow: none; 
                 overflow: hidden; 
             }
             header.report-header {
@@ -483,10 +563,9 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
 
-    // Gera a string HTML completa para download
     function generateFullHtmlReportString(eventName, data, total, generationDate) {
         const styles = getReportStylesForHtmlDownload();
-        const tableRowsHtml = generateReportTableContentHtml(data, total, false); // Não filtra zeros para HTML baixado
+        const tableRowsHtml = generateReportTableContentHtml(data, total, false);
 
         return `
             <!DOCTYPE html>
@@ -528,12 +607,10 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
 
-    // Inicia o download de um arquivo HTML
     function downloadHtmlReport(htmlContent, eventName, generationDate) {
         const blob = new Blob([htmlContent], { type: 'text/html' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        // Cria um nome de arquivo seguro
         const safeEventName = eventName.replace(/[^a-z0-9_-\s]/gi, '_').replace(/\s+/g, '_');
         const safeDate = generationDate.replace(/[\/:]/g, '-').replace(/\s/g, '_');
         a.download = `Relatorio_Connect_${safeEventName}_${safeDate}.html`;
@@ -543,7 +620,6 @@ document.addEventListener('DOMContentLoaded', function() {
         URL.revokeObjectURL(a.href);
     }
     
-    // Atualiza a data de geração na UI e a retorna
     function updateGenerationDateAndGetIt() {
         const today = new Date();
         const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -555,7 +631,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return fullDateTimeString;
     }
 
-    // Atualiza a data de geração na UI ao carregar a página
     function updateGenerationDate() {
         const today = new Date();
         const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -565,7 +640,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Função para escapar HTML para evitar XSS e garantir a exibição correta
     function escapeHTML(str) {
         if (typeof str !== 'string') return String(str);
         const div = document.createElement('div');
