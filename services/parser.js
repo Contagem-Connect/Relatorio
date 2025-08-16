@@ -12,54 +12,136 @@
 function normalizeText(text) {
     return text
         .toLowerCase()
-        .normalize("NFD") // Normaliza para forma decomposta (e.g., "á" para "a" + "´")
-        .replace(/[\u0300-\u036f]/g, "") // Remove os caracteres combinados (acentos, trema, etc.)
-        .replace(/\s+/g, " ") // Substitui múltiplos espaços por um único espaço
-        .trim(); // Remove espaços em branco do início e fim
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
 /**
- * Mapeamento dinâmico de palavras-chave para IDs dos inputs do formulário.
- * A ordem é crucial: frases mais específicas (maior número de palavras ou termos compostos)
- * devem vir antes de termos mais genéricos para garantir a correspondência correta
- * em casos ambíguos (ex: "maes bebes" antes de "maes").
+ * Mapeamento padrão de palavras-chave para IDs dos inputs do formulário.
+ * A ordem é importante para priorizar termos mais específicos (ex: "maes bebes" antes de "maes").
  */
-const dynamicKeywordMap = [
-    // Ordem de especificidade (do mais específico para o mais genérico)
-    // Culto principal - geralmente um termo único ou implicado
-    { keywords: ['culto', 'presenca', 'presentes'], inputId: 'cultoPresentes' },
-
+const defaultKeywordMap = [
+    { keywords: ['culto'], inputId: 'cultoPresentes' },
     // Casos de Mães e Voluntários em Babies - prioridade para o contexto
     { keywords: ['maes bebes', 'mae bebes', 'maes babies', 'mae babies'], inputId: 'babiesMaes' },
-    { keywords: ['responsaveis bebes', 'voluntarios bebes', 'tios bebes', 'tias bebes', 'colaboradores bebes'], inputId: 'babiesResponsaveis' },
-    // Crianças em Babies
-    { keywords: ['bebes', 'babies', 'criancas bebes'], inputId: 'babiesCriancas' },
+    { keywords: ['responsaveis bebes', 'voluntarios bebes', 'tios bebes', 'tias bebes'], inputId: 'babiesResponsaveis' },
+    // Criancas em Babies
+    { keywords: ['bebes', 'babies', 'bebe'], inputId: 'babiesCriancas' },
 
     // Casos de Mães e Voluntários em Kids - prioridade para o contexto
     { keywords: ['maes kids', 'mae kids'], inputId: 'kidsMaes' },
-    { keywords: ['tias kids', 'tios kids', 'tio kids', 'tia kids', 'voluntarios kids', 'colaboradores kids'], inputId: 'kidsTias' },
-    // Crianças em Kids
-    { keywords: ['kids', 'criancas kids', 'criancas'], inputId: 'kidsCriancas' }, // "criancas" genérico, mas pode ser sobreescrito por Kids
+    { keywords: ['tias kids', 'tio kids', 'voluntarios kids'], inputId: 'kidsTias' },
+    // Criancas em Kids
+    { keywords: ['kids', 'criancas', 'crianca'], inputId: 'kidsCriancas' },
 
     // Casos de Voluntários em Teens
-    { keywords: ['tios teens', 'tio teens', 'tias teens', 'tia teens', 'voluntarios teens', 'colaboradores teens'], inputId: 'teensTios' },
+    { keywords: ['tios teens', 'tio teens', 'voluntarios teens'], inputId: 'teensTios' },
     // Adolescentes em Teens
-    { keywords: ['teens', 'adolescentes'], inputId: 'teensAdolescentes' },
+    { keywords: ['teens', 'adolescentes', 'teen'], inputId: 'teensAdolescentes' },
 
     // Termos genéricos que servem como fallback (ordem também importa aqui)
-    // Estes vêm por último para serem aplicados apenas se termos mais específicos não forem encontrados.
     { keywords: ['maes', 'mae'], inputId: 'kidsMaes' }, // Padrão para "mães" se nenhum contexto específico for encontrado
-    { keywords: ['tias', 'tio', 'voluntarios', 'voluntario', 'colaboradores'], inputId: 'kidsTias' } // Padrão para "tios/tias/voluntários" se nenhum contexto específico for encontrado
+    { keywords: ['tias', 'tio', 'voluntarios', 'voluntario'], inputId: 'kidsTias' } // Padrão para "tios/tias/voluntários" se nenhum contexto específico for encontrado
 ];
 
-// Opcional: Para garantir a ordem de especificidade, podemos ordenar a lista
-// baseado no comprimento das frases-chave. Frases mais longas (mais específicas) vêm primeiro.
-// Isso garante que "maes bebes" seja verificado antes de "maes".
-dynamicKeywordMap.sort((a, b) => {
-    const aMaxLen = Math.max(...a.keywords.map(k => k.length));
-    const bMaxLen = Math.max(...b.keywords.map(k => k.length));
-    return bMaxLen - aMaxLen; // Ordem decrescente de comprimento da maior palavra-chave
-});
+/**
+ * Carrega mapeamentos personalizados do localStorage, combina com os padrões
+ * e retorna o mapeamento ativo, priorizando termos mais específicos/longos.
+ * @returns {Array<object>} O mapeamento de palavras-chave combinado e ordenado.
+ */
+function getActiveKeywordMap() {
+    let customMappings = [];
+    try {
+        const storedMappings = localStorage.getItem('customKeywordMappings');
+        if (storedMappings) {
+            customMappings = JSON.parse(storedMappings);
+            // Validar que é um array de objetos com 'keywords' (array de strings) e 'inputId' (string)
+            customMappings = customMappings.filter(m => 
+                Array.isArray(m.keywords) && m.keywords.every(k => typeof k === 'string') && typeof m.inputId === 'string'
+            );
+        }
+    } catch (e) {
+        console.error("Erro ao carregar customKeywordMappings do localStorage:", e);
+        customMappings = []; // Resetar se houver erro ou corrupção
+    }
+
+    // Cria um conjunto de IDs de palavras-chave padrão para evitar duplicatas exatas se um termo personalizado for adicionado
+    const defaultKeywordSet = new Set(defaultKeywordMap.flatMap(m => m.keywords));
+    
+    // Combina os mapeamentos personalizados (com prioridade) e os padrões.
+    // Garante que mapeamentos personalizados sobreponham ou complementem os padrões.
+    // Filtra duplicatas de keywords padrão se elas já existirem em customMappings.
+    let combinedMap = [...customMappings];
+    defaultKeywordMap.forEach(defaultMap => {
+        // Se a keyword padrão já existe em algum mapeamento personalizado para o mesmo inputId,
+        // ou se a keyword já está em um mapeamento personalizado qualquer, não adiciona novamente.
+        const isDefaultKeywordAlreadyCovered = customMappings.some(customMap => 
+            customMap.inputId === defaultMap.inputId && defaultMap.keywords.some(k => customMap.keywords.includes(k))
+        );
+        if (!isDefaultKeywordAlreadyCovered) {
+            combinedMap.push(defaultMap);
+        }
+    });
+
+    // Ordena por especificidade: frases mais longas (mais específicas) vêm primeiro.
+    combinedMap.sort((a, b) => {
+        const aLen = Math.max(...a.keywords.map(k => k.length));
+        const bLen = Math.max(...b.keywords.map(k => k.length));
+        return bLen - aLen; // Ordem decrescente de comprimento de palavra-chave
+    });
+
+    return combinedMap;
+}
+
+/**
+ * Salva um novo mapeamento personalizado no localStorage.
+ * Atualiza um mapeamento existente se a keyword já for para o mesmo inputId,
+ * caso contrário, adiciona como novo.
+ * @param {object} newMapping - O novo mapeamento a ser salvo (ex: { keywords: ['minha palavra'], inputId: 'kidsCriancas' }).
+ */
+function saveCustomMapping(newMapping) {
+    let customMappings = [];
+    try {
+        const storedMappings = localStorage.getItem('customKeywordMappings');
+        if (storedMappings) {
+            customMappings = JSON.parse(storedMappings);
+        }
+    } catch (e) {
+        console.error("Erro ao carregar customKeywordMappings para salvar:", e);
+    }
+    
+    // Normalize a nova palavra-chave antes de salvar
+    const normalizedNewKeywords = newMapping.keywords.map(k => normalizeText(k));
+    const newMappingToSave = { keywords: normalizedNewKeywords, inputId: newMapping.inputId };
+
+    // Verifica se já existe um mapeamento para o mesmo inputId que já contem alguma das novas keywords
+    const existingMappingIndex = customMappings.findIndex(m => 
+        m.inputId === newMappingToSave.inputId && 
+        m.keywords.some(k => newMappingToSave.keywords.includes(k))
+    );
+
+    if (existingMappingIndex > -1) {
+        // Se já existe um mapeamento para o mesmo inputId e mesma keyword, apenas garante que a nova keyword esteja lá
+        newMappingToSave.keywords.forEach(newKw => {
+            if (!customMappings[existingMappingIndex].keywords.includes(newKw)) {
+                customMappings[existingMappingIndex].keywords.push(newKw);
+            }
+        });
+    } else {
+        // Adiciona como um novo mapeamento
+        customMappings.push(newMappingToSave);
+    }
+
+    try {
+        localStorage.setItem('customKeywordMappings', JSON.stringify(customMappings));
+        console.log("Mapeamento personalizado salvo:", newMappingToSave);
+    } catch (e) {
+        console.error("Erro ao salvar customKeywordMappings no localStorage:", e);
+    }
+}
+
 
 /**
  * Analisa uma string de texto bruto (copiada do WhatsApp) e extrai dados de contagem.
@@ -69,68 +151,75 @@ dynamicKeywordMap.sort((a, b) => {
 function parseRawData(rawText) {
     const parsedData = {};
     const feedbackLog = [];
-    const lines = rawText.split('\n'); // Divide o texto bruto em linhas individuais
+    const lines = rawText.split('\n');
+    const activeKeywordMap = getActiveKeywordMap(); // Obtém o mapeamento ativo (incluindo personalizados)
 
     lines.forEach(line => {
-        const originalLine = line.trim(); // A linha original (com espaços removidos das pontas) para o log
-        const normalizedLine = normalizeText(originalLine); // Versão normalizada para comparações
+        const originalLine = line.trim(); // Mantém a linha original para feedback
+        const normalizedLine = normalizeText(originalLine); // Normaliza para comparação
 
-        // Ignora linhas que são vazias, apenas "ok", ou um timestamp do WhatsApp
+        // Ignora linhas vazias, que contenham apenas "ok" ou timestamps do WhatsApp
         if (!normalizedLine || /^\s*ok\s*$/i.test(normalizedLine) || /^\[\d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}:\d{2}\]/.test(originalLine)) {
-            return; // Continua para a próxima linha sem adicionar ao log de feedback
+            return;
         }
 
         let processed = false;
         let matchedQuantity = 0;
         let matchedInputId = null;
-        let matchedKeywordFound = ''; // Armazena a palavra-chave que realmente deu match
+        let matchedKeywordFound = '';
 
-        // Tenta encontrar um número na linha (regex mais simples para pegar apenas o número)
+        // Tenta encontrar o primeiro número na linha.
         const numMatch = normalizedLine.match(/(\d+)/);
 
         if (numMatch) {
-            matchedQuantity = parseInt(numMatch[1], 10); // Converte a string numérica para inteiro
-
-            // Itera sobre o mapeamento de palavras-chave, priorizando as mais específicas
-            for (const mapping of dynamicKeywordMap) {
+            // Converte a string numérica para inteiro. O "10" garante base decimal.
+            // Este é o ponto crucial para a correção da quantidade.
+            matchedQuantity = parseInt(numMatch[1], 10); 
+            
+            // Itera sobre o mapeamento de palavras-chave (já ordenado por especificidade).
+            for (const mapping of activeKeywordMap) {
                 for (const keyword of mapping.keywords) {
+                    // Verifica se a linha normalizada inclui a palavra-chave
                     if (normalizedLine.includes(keyword)) {
                         matchedInputId = mapping.inputId;
                         matchedKeywordFound = keyword; // Salva o termo que deu match
                         processed = true;
-                        break; // Sai do loop de keywords assim que encontrar uma
+                        break; // Terminou de procurar palavras-chave para este mapeamento
                     }
                 }
-                if (processed) break; // Sai do loop de mappings assim que encontrar um
+                if (processed) break; // Terminou de procurar mapeamentos para esta linha
             }
 
-            // Fallback para "Culto Principal": Se um número foi encontrado mas nenhuma palavra-chave específica,
-            // e a linha é relativamente curta, atribui ao culto principal.
-            if (!processed && normalizedLine.length < 25 && matchedQuantity > 0) { // Limite de caracteres para evitar pegar textos longos aleatórios
+            // Fallback: Se um número foi encontrado mas nenhuma palavra-chave específica,
+            // e a linha é curta, assume-se que é "Culto Principal".
+            if (!processed && normalizedLine.length <= 15) { // Limite de 15 caracteres para evitar pegar textos longos aleatórios
                  matchedInputId = 'cultoPresentes';
-                 matchedKeywordFound = 'culto (padrão)'; // Indica que foi um padrão
+                 matchedKeywordFound = 'culto (padrão)';
                  processed = true;
             }
         }
 
-        // Registra o resultado no log de feedback
+        // Registra o resultado no log de feedback.
         if (processed && matchedInputId !== null) {
-            // Soma a quantidade encontrada ao valor já existente para aquele inputId
             parsedData[matchedInputId] = (parsedData[matchedInputId] || 0) + matchedQuantity;
             feedbackLog.push({
-                line: originalLine, // A linha original para mostrar ao usuário
+                line: originalLine, // Usa a linha original para exibir no feedback
                 status: 'success',
-                message: `Identificado: ${matchedQuantity} para "${matchedKeywordFound}"`
+                message: `Encontrado: ${matchedQuantity} para "${matchedKeywordFound}" (ID: ${matchedInputId})`
             });
         } else {
-            // Se não foi processado, registra como ignorado
             feedbackLog.push({
-                line: originalLine, // A linha original para mostrar ao usuário
+                line: originalLine, // Usa a linha original para exibir no feedback
                 status: 'ignored',
-                message: 'Linha ignorada: não foi possível identificar número ou categoria.'
+                message: 'Não reconhecido. Clique em "Associar" para ensinar o sistema.'
             });
         }
     });
 
     return { parsedData, feedbackLog };
 }
+
+// Expondo a função saveCustomMapping globalmente para que script.js possa usá-la.
+// Em um ambiente de módulos (ES6 modules), isso seria feito com 'export'.
+window.saveCustomMapping = saveCustomMapping;
+window.normalizeText = normalizeText; // Expor normalizeText para ser usada no modal de associação
