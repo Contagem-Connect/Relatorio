@@ -8,8 +8,8 @@ Este projeto é uma aplicação web simples para gerar relatórios de contagem d
 *   **Novos Campos:** Inclusão de campos para contagem de "Mães" nas salas Babies e Kids, e "Tio(a)/Voluntário(a)" em Babies, Kids e Teens.
 *   **Importação Inteligente de Dados Brutos (WhatsApp):**
     *   **Modal Dedicado:** Interface para colar texto direto de conversas do WhatsApp.
-    *   **Parsing Robusto:** Reconhece quantidades mesmo com variações de texto (singular/plural, com/sem acentos, números colados à palavra, ex: "19kids").
-    *   **Inteligência de Contexto:** Distingue "Tios/Tias/Voluntários" para as salas Kids, Teens ou Babies com base no contexto da linha ou da linha anterior, garantindo a atribuição correta das contagens.
+    *   **Parsing Robusto:** Reconhece quantidades mesmo com variações de texto (singular/plural, com/sem acentos, erros de digitação como "babys", e números colados à palavra, ex: "19kids").
+    *   **Inteligência de Contexto:** Distingue termos genéricos como "Tios/Tias/Voluntários" **e "Mães"** com base no contexto da linha ou da linha anterior, garantindo a atribuição correta das contagens para as salas Kids, Teens ou Babies.
     *   **Feedback Visual Completo:** Exibe um log detalhado linha por linha, mostrando em verde o que foi reconhecido e em vermelho o que foi ignorado, incluindo a quantidade e o campo associado.
     *   **Resumo de Processamento:** Apresenta um resumo claro no topo do log, indicando quantas linhas foram processadas com sucesso e quantas foram ignoradas.
     *   **Aprendizado Interativo:** Permite que o usuário, ao lado de cada linha ignorada, clique em "Associar" para "ensinar" o sistema a reconhecer novos termos ou variações, salvando essa associação localmente (`localStorage`) para uso futuro.
@@ -30,7 +30,7 @@ Este projeto é uma aplicação web simples para gerar relatórios de contagem d
     *   **Preenchimento Manual:** Insira as quantidades nos campos do formulário para cada categoria.
     *   **Importação de Dados Brutos (via WhatsApp):**
         *   Clique no botão **"Processar Dados Brutos (WhatsApp)"**. Um modal será aberto.
-        *   Cole o texto diretamente de uma conversa do WhatsApp (ex: "19 teens", "4 tios", "36 kids", "6 tias", "230 no culto").
+        *   Cole o texto diretamente de uma conversa do WhatsApp (ex: "19 teens", "6 babys", "3 mães", "4 tias", "210 no culto").
         *   O sistema irá analisar o texto, preencher o formulário automaticamente e exibir um **log de feedback visual** no modal.
         *   **Feedback Visual:**
             *   Um resumo no topo indicará quantas linhas foram reconhecidas e quantas foram ignoradas.
@@ -69,7 +69,7 @@ Este projeto é uma aplicação web simples para gerar relatórios de contagem d
 *   `services/parser.js`: Contém a lógica JavaScript para:
     *   Analisar e extrair dados de contagem de textos brutos (copiados do WhatsApp).
     *   Normalizar o texto (minúsculas, sem acentos, etc.) para garantir um reconhecimento robusto.
-    *   Implementar a inteligência de contexto para diferenciar categorias como "Tios/Tias/Voluntários" para Kids, Teens e Babies.
+    *   Implementar a inteligência de contexto para diferenciar categorias como "Tios/Tias/Voluntários" **e "Mães"** para as salas Kids, Teens e Babies.
     *   Gerenciar os mapeamentos de palavras-chave, incluindo o carregamento e salvamento de associações personalizadas no `localStorage`.
     *   Retornar os dados processados e um log detalhado para feedback visual.
 
@@ -85,7 +85,7 @@ Este projeto é uma aplicação web simples para gerar relatórios de contagem d
 
 *   **Estilos do Relatório:** Os estilos CSS para o arquivo HTML baixado e para a imagem gerada são embutidos diretamente (`<style>`). Eles são baseados no `style.css` principal, mas estão definidos como uma string dentro da função `getReportStyles` no arquivo `script.js` para garantir que o relatório seja autossuficiente e portável.
 *   **Lógica de Parsing e Aprendizado:**
-    *   O coração da inteligência de reconhecimento de texto está em `services/parser.js`. Ele utiliza um `dynamicKeywordMap` que combina regras padrão com mapeamentos salvos no `localStorage` pelo usuário.
+    *   O coração da inteligência de reconhecimento de texto está em `services/parser.js`. Ele utiliza um `dynamicKeywordMap` que combina regras padrão com mapeamentos salvos no `localStorage` pelo usuário, **além de uma lógica de contexto para atribuir termos genéricos ("mães", "tios") à sala correta com base nas linhas anteriores**.
     *   A função `saveCustomMapping` em `services/parser.js` é usada para persistir as novas associações aprendidas pelo usuário. Para que ela seja acessível em `script.js`, é necessário expô-la globalmente (ex: `window.saveCustomMapping = saveCustomMapping;` e `window.normalizeText = normalizeText;` no final do `services/parser.js`). Em um projeto maior, o uso de módulos ES6 (`import/export`) seria a abordagem recomendada.
 *   **Modificações:**
     *   Para alterar a **aparência da página principal (`index.html`)** ou dos **modais**, modifique o arquivo `style.css`.
