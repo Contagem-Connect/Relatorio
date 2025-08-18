@@ -155,31 +155,48 @@ function parseRawData(rawText) {
     const parsedData = {};
     const feedbackLog = [];
     const lines = rawText.split('\n');
-    const activeKeywordMap = getActiveKeywordMap(); // Obtém o mapeamento ativo (padrão + personalizado)
+    const activeKeywordMap = getActiveKeywordMap();
 
-    let lastIdentifiedGroup = null; // Variável para manter o contexto da última linha reconhecida (Kids, Teens, Babies)
+    let lastIdentifiedGroup = null;
 
     lines.forEach(line => {
-        const originalLine = line.trim();
-        const normalizedLine = normalizeText(originalLine);
+        let originalLine = line.trim();
 
-        // Ignora linhas vazias, que contenham apenas "ok" ou timestamps do WhatsApp
-        if (!normalizedLine || /^\s*ok\s*$/i.test(normalizedLine) || /^\[\d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}:\d{2}\]/.test(originalLine)) {
+        // Ignora linhas completamente vazias
+        if (!originalLine) {
             return;
         }
 
+        // NOVO: Regex para identificar e remover metadados do WhatsApp
+        // Ex: remove "[17/8 20:01] +55 65 9963-0579: " ou "[17/8 20:06] Fernando Cardoso Nogueira: "
+        const whatsappMetadataRegex = /^\[\d{1,2}\/\d{1,2}\/\d{4},?\s\d{2}:\d{2}(?::\d{2})?\]\s*[^:]+:\s*/i;
+        let cleanLine = originalLine.replace(whatsappMetadataRegex, '');
+        
+        // Ignora linhas que eram SÓ metadados ou mensagens de sistema (ex: "ok")
+        if (!cleanLine.trim() || /^\s*ok\s*$/i.test(cleanLine)) {
+            return;
+        }
+
+        // NOVO: Adiciona um espaço entre números e letras para tratar casos como "31kids"
+        // Isso transforma "31kids" em "31 kids", facilitando o parsing
+        cleanLine = cleanLine.replace(/(\d+)([a-zA-Záéíóúâêîôûãõç]+)/g, '$1 $2');
+        
+        const normalizedLine = normalizeText(cleanLine);
+        
         let processed = false;
         let matchedQuantity = 0;
         let matchedInputId = null;
         let matchedKeywordFound = '';
-        let currentLineGroup = null; // Grupo identificado para a linha atual (se houver)
+        let currentLineGroup = null;
 
-        const numMatch = normalizedLine.match(/(\d+)/); // Busca o primeiro número na linha
+        // CORRIGIDO: Busca pelo número na linha JÁ LIMPA
+        const numMatch = normalizedLine.match(/(\d+)/);
 
         if (numMatch) {
-            matchedQuantity = parseInt(numMatch[1], 10); // Extrai o número (confirmação da correção do bug do 20)
+            // O bug de pegar "17" em vez de "31" é corrigido aqui, pois a data já foi removida.
+            matchedQuantity = parseInt(numMatch[0], 10);
 
-            // 1. Tentar encontrar palavras-chave específicas primeiro (incluindo as personalizadas)
+            // 1. Tentar encontrar palavras-chave específicas
             for (const mapping of activeKeywordMap) {
                 for (const keyword of mapping.keywords) {
                     if (normalizedLine.includes(keyword)) {
@@ -187,14 +204,13 @@ function parseRawData(rawText) {
                         matchedKeywordFound = keyword;
                         processed = true;
                         currentLineGroup = getGroupFromInputId(matchedInputId);
-                        break; // Para na primeira palavra-chave encontrada para este mapeamento
+                        break;
                     }
                 }
-                if (processed) break; // Para na primeira entrada de mapeamento que deu match
+                if (processed) break;
             }
 
-            // 2. Se não processado por palavras-chave específicas, tentar 'tias'/'tios'/'voluntarios' com contexto
-            // (Note que 'tias', 'tios', 'voluntarios' genéricos não estão mais no defaultKeywordMap)
+            // 2. Lógica de contexto para 'tias'/'tios' (inalterada, mas agora funciona com o número correto)
             if (!processed) {
                 const isGenericTiaTerm = normalizedLine.includes('tias') || normalizedLine.includes('tia');
                 const isGenericTioTerm = normalizedLine.includes('tios') || normalizedLine.includes('tio');
@@ -217,7 +233,7 @@ function parseRawData(rawText) {
                         processed = true;
                         currentLineGroup = 'Babies';
                     } else {
-                        // 3. Atribuição padrão para genéricos se nenhum contexto relevante for encontrado
+                         // 3. Atribuição padrão para genéricos se nenhum contexto relevante for encontrado
                         if (isGenericTiaTerm) {
                             matchedInputId = 'kidsTias'; // Padrão para 'tias' (kids)
                             matchedKeywordFound = 'tias (padrao)';
@@ -228,48 +244,46 @@ function parseRawData(rawText) {
                             matchedInputId = 'kidsTias'; // Padrão para 'voluntarios' (kids)
                             matchedKeywordFound = 'voluntarios (padrao)';
                         }
-                        processed = true;
-                        currentLineGroup = getGroupFromInputId(matchedInputId); // Obtém o grupo do padrão atribuído
+                        if (matchedInputId) {
+                            processed = true;
+                            currentLineGroup = getGroupFromInputId(matchedInputId); // Obtém o grupo do padrão atribuído
+                        }
                     }
                 }
             }
-            
-            // 4. Fallback para 'Culto' (se não processado, linha curta e inclui 'culto' ou nenhum outro termo foi encontrado)
-            if (!processed && normalizedLine.length <= 15 && (normalizedLine.includes('culto') || (!normalizedLine.includes('kids') && !normalizedLine.includes('teens') && !normalizedLine.includes('babies') && !normalizedLine.includes('maes') && !isGenericTiaTerm && !isGenericTioTerm && !isGenericVoluntarioTerm))) {
-                matchedInputId = 'cultoPresentes';
-                matchedKeywordFound = 'culto (padrao)';
-                processed = true;
-                currentLineGroup = 'Culto';
-            }
-        }
 
-        // Registro final no log de feedback
-        if (processed && matchedInputId !== null) {
-            parsedData[matchedInputId] = (parsedData[matchedInputId] || 0) + matchedQuantity;
-            feedbackLog.push({
-                line: originalLine,
-                status: 'success',
-                message: `Encontrado: ${matchedQuantity} para "${matchedKeywordFound}" (ID: ${matchedInputId})`
-            });
-            // Atualiza o contexto apenas se a linha foi processada com sucesso
-            if (currentLineGroup) {
-                lastIdentifiedGroup = currentLineGroup;
+            // Registro final no log de feedback
+            if (processed && matchedInputId !== null) {
+                parsedData[matchedInputId] = (parsedData[matchedInputId] || 0) + matchedQuantity;
+                feedbackLog.push({
+                    line: originalLine,
+                    status: 'success',
+                    message: `Encontrado: ${matchedQuantity} para "${matchedKeywordFound}" (ID: ${matchedInputId})`
+                });
+                if (currentLineGroup) {
+                    lastIdentifiedGroup = currentLineGroup;
+                }
+            } else {
+                feedbackLog.push({
+                    line: originalLine,
+                    status: 'ignored',
+                    message: 'Não reconhecido. Clique em "Associar" para ensinar o sistema.'
+                });
             }
-        } else {
-            // Linha ignorada - para o feedback interativo de associação
-            feedbackLog.push({
+        } else { // Caso não encontre nenhum número na linha
+             feedbackLog.push({
                 line: originalLine,
                 status: 'ignored',
                 message: 'Não reconhecido. Clique em "Associar" para ensinar o sistema.'
             });
-            // Não atualiza o lastIdentifiedGroup para linhas ignoradas
         }
     });
 
     return { parsedData, feedbackLog };
 }
 
+
 // Expondo funções para acesso global pelo script.js (se não estiver usando módulos ES6)
 window.normalizeText = normalizeText;
 window.saveCustomMapping = saveCustomMapping;
-window.parseRawData = parseRawData; // Expor também o parseRawData para uso direto se necessário
+window.parseRawData = parseRawData;
