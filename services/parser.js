@@ -22,21 +22,19 @@ function normalizeText(text) {
 /**
  * Mapeamento padrão de palavras-chave para IDs dos inputs do formulário.
  * A ordem é importante: termos mais específicos devem vir antes de termos mais genéricos.
- * Os termos genéricos 'tias', 'tios', 'voluntarios' são propositalmente omitidos aqui
- * pois serão tratados com base no contexto na função parseRawData.
  */
 const defaultKeywordMap = [
     { keywords: ['culto'], inputId: 'cultoPresentes' },
     { keywords: ['maes bebes', 'mae bebes', 'maes babies', 'mae babies'], inputId: 'babiesMaes' },
     { keywords: ['responsaveis bebes', 'voluntarios bebes', 'tios bebes', 'tias bebes'], inputId: 'babiesResponsaveis' },
-    { keywords: ['bebes', 'babies', 'bebe'], inputId: 'babiesCriancas' },
+    // *** ALTERAÇÃO 1: Adicionadas mais variações para 'babies' ***
+    { keywords: ['bebes', 'babies', 'bebe', 'babys', 'babi'], inputId: 'babiesCriancas' },
     { keywords: ['maes kids', 'mae kids'], inputId: 'kidsMaes' },
     { keywords: ['tias kids', 'tio kids', 'voluntarios kids'], inputId: 'kidsTias' },
     { keywords: ['kids', 'criancas', 'crianca'], inputId: 'kidsCriancas' },
     { keywords: ['tios teens', 'tio teens', 'voluntarios teens'], inputId: 'teensTios' },
     { keywords: ['teens', 'adolescentes', 'teen'], inputId: 'teensAdolescentes' },
-    // Mães genéricas (sem contexto kids/babies explícito) ainda são padrão para Kids
-    { keywords: ['maes', 'mae'], inputId: 'kidsMaes' }
+    // A regra genérica para "mães" foi REMOVIDA daqui para ser tratada por contexto.
 ];
 
 /**
@@ -72,15 +70,11 @@ function getActiveKeywordMap() {
         customMappings = []; // Resetar se houver erro ou corrupção
     }
 
-    // Combina os mapeamentos personalizados (com prioridade) e os padrões
-    // Mapeamentos personalizados vêm primeiro para que sejam correspondidos antes dos padrões
     let combinedMap = [...customMappings, ...defaultKeywordMap];
 
-    // Remove duplicatas exatas de inputId + keyword para evitar processamento redundante
     const uniqueMap = [];
     const seen = new Set();
     for (const item of combinedMap) {
-        // Cria uma chave única para cada combinação inputId + keyword normalizada
         const itemKey = item.inputId + '_' + item.keywords.map(k => normalizeText(k)).sort().join('|');
         if (!seen.has(itemKey)) {
             uniqueMap.push(item);
@@ -89,8 +83,6 @@ function getActiveKeywordMap() {
     }
     combinedMap = uniqueMap;
 
-    // Ordena por especificidade: frases mais longas (mais específicas) vêm primeiro.
-    // Isso garante que "maes bebes" seja verificado antes de "maes".
     combinedMap.sort((a, b) => {
         const aLen = Math.max(...a.keywords.map(k => k.length));
         const bLen = Math.max(...b.keywords.map(k => k.length));
@@ -102,9 +94,7 @@ function getActiveKeywordMap() {
 
 /**
  * Salva um novo mapeamento personalizado no localStorage.
- * Atualiza um mapeamento existente se a mesma palavra-chave já estiver associada ao mesmo campo,
- * ou adiciona um novo se for único.
- * @param {object} newMapping - O objeto de mapeamento a ser salvo (ex: { keywords: ['nova palavra'], inputId: 'kidsTias' }).
+ * @param {object} newMapping - O objeto de mapeamento a ser salvo.
  */
 function saveCustomMapping(newMapping) {
     let customMappings = [];
@@ -119,21 +109,18 @@ function saveCustomMapping(newMapping) {
     
     const normalizedNewKeywords = newMapping.keywords.map(k => normalizeText(k));
 
-    // Procura por um mapeamento existente para o mesmo inputId que já inclua alguma das novas keywords
     const existingMappingIndex = customMappings.findIndex(m => 
         m.inputId === newMapping.inputId && 
         m.keywords.some(existingKw => normalizedNewKeywords.includes(normalizeText(existingKw)))
     );
 
     if (existingMappingIndex > -1) {
-        // Se a associação para o mesmo inputId e uma keyword já existe, adicione as novas keywords (sem duplicar)
         normalizedNewKeywords.forEach(newKw => {
             if (!customMappings[existingMappingIndex].keywords.includes(newKw)) {
                 customMappings[existingMappingIndex].keywords.push(newKw);
             }
         });
     } else {
-        // Caso contrário, adiciona o novo mapeamento
         customMappings.push({ keywords: normalizedNewKeywords, inputId: newMapping.inputId });
     }
 
@@ -166,8 +153,6 @@ function parseRawData(rawText) {
             return;
         }
 
-        // *** CORREÇÃO APLICADA AQUI ***
-        // Esta regex é mais flexível e captura qualquer formato de data/hora dentro dos colchetes.
         const whatsappMetadataRegex = /^\[[^\]]+\]\s[^:]+:\s*/;
         let cleanLine = originalLine.replace(whatsappMetadataRegex, '');
         
@@ -190,6 +175,7 @@ function parseRawData(rawText) {
         if (numMatch) {
             matchedQuantity = parseInt(numMatch[0], 10);
 
+            // 1. Tenta correspondência com palavras-chave explícitas primeiro
             for (const mapping of activeKeywordMap) {
                 for (const keyword of mapping.keywords) {
                     if (normalizedLine.includes(keyword)) {
@@ -203,6 +189,7 @@ function parseRawData(rawText) {
                 if (processed) break;
             }
 
+            // 2. Lógica de contexto para termos genéricos (tios/tias/voluntários)
             if (!processed) {
                 const isGenericTiaTerm = normalizedLine.includes('tias') || normalizedLine.includes('tia');
                 const isGenericTioTerm = normalizedLine.includes('tios') || normalizedLine.includes('tio');
@@ -211,39 +198,47 @@ function parseRawData(rawText) {
                 if (isGenericTiaTerm || isGenericTioTerm || isGenericVoluntarioTerm) {
                     if (lastIdentifiedGroup === 'Kids') {
                         matchedInputId = 'kidsTias';
-                        matchedKeywordFound = isGenericTiaTerm ? 'tias (por contexto Kids)' : 'voluntarios (por contexto Kids)';
-                        processed = true;
-                        currentLineGroup = 'Kids';
+                        matchedKeywordFound = 'voluntários (por contexto Kids)';
                     } else if (lastIdentifiedGroup === 'Teens') {
                         matchedInputId = 'teensTios';
-                        matchedKeywordFound = isGenericTioTerm ? 'tios (por contexto Teens)' : 'voluntarios (por contexto Teens)';
-                        processed = true;
-                        currentLineGroup = 'Teens';
+                        matchedKeywordFound = 'voluntários (por contexto Teens)';
                     } else if (lastIdentifiedGroup === 'Babies') {
                         matchedInputId = 'babiesResponsaveis';
-                        matchedKeywordFound = 'responsaveis (por contexto Babies)';
+                        matchedKeywordFound = 'voluntários (por contexto Babies)';
+                    } else { // Fallback se não houver contexto
+                        if (isGenericTiaTerm) matchedInputId = 'kidsTias';
+                        else if (isGenericTioTerm) matchedInputId = 'teensTios';
+                        else matchedInputId = 'kidsTias';
+                        matchedKeywordFound = 'voluntários (padrão)';
+                    }
+                    if (matchedInputId) {
+                        processed = true;
+                        currentLineGroup = getGroupFromInputId(matchedInputId);
+                    }
+                }
+            }
+
+            // *** ALTERAÇÃO 2: Novo bloco de lógica de contexto para 'mães' ***
+            if (!processed) {
+                const isGenericMaeTerm = normalizedLine.includes('maes') || normalizedLine.includes('mae');
+                if (isGenericMaeTerm) {
+                    if (lastIdentifiedGroup === 'Babies') {
+                        matchedInputId = 'babiesMaes';
+                        matchedKeywordFound = 'mães (por contexto Babies)';
                         processed = true;
                         currentLineGroup = 'Babies';
                     } else {
-                        if (isGenericTiaTerm) {
-                            matchedInputId = 'kidsTias';
-                            matchedKeywordFound = 'tias (padrao)';
-                        } else if (isGenericTioTerm) {
-                            matchedInputId = 'teensTios';
-                            matchedKeywordFound = 'tios (padrao)';
-                        } else if (isGenericVoluntarioTerm) {
-                            matchedInputId = 'kidsTias';
-                            matchedKeywordFound = 'voluntarios (padrao)';
-                        }
-                        if (matchedInputId) {
-                            processed = true;
-                            currentLineGroup = getGroupFromInputId(matchedInputId);
-                        }
+                        // Padrão para 'mães' é a sala Kids se o contexto não for Babies
+                        matchedInputId = 'kidsMaes';
+                        matchedKeywordFound = 'mães (padrão)';
+                        processed = true;
+                        currentLineGroup = 'Kids';
                     }
                 }
             }
         }
         
+        // Registro final no log de feedback
         if (processed && matchedInputId !== null) {
             parsedData[matchedInputId] = (parsedData[matchedInputId] || 0) + matchedQuantity;
             feedbackLog.push({
@@ -265,7 +260,6 @@ function parseRawData(rawText) {
 
     return { parsedData, feedbackLog };
 }
-
 
 // Expondo funções para acesso global pelo script.js (se não estiver usando módulos ES6)
 window.normalizeText = normalizeText;
