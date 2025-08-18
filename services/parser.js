@@ -162,23 +162,19 @@ function parseRawData(rawText) {
     lines.forEach(line => {
         let originalLine = line.trim();
 
-        // Ignora linhas completamente vazias
         if (!originalLine) {
             return;
         }
 
-        // NOVO: Regex para identificar e remover metadados do WhatsApp
-        // Ex: remove "[17/8 20:01] +55 65 9963-0579: " ou "[17/8 20:06] Fernando Cardoso Nogueira: "
-        const whatsappMetadataRegex = /^\[\d{1,2}\/\d{1,2}\/\d{4},?\s\d{2}:\d{2}(?::\d{2})?\]\s*[^:]+:\s*/i;
+        // *** CORREÇÃO APLICADA AQUI ***
+        // Esta regex é mais flexível e captura qualquer formato de data/hora dentro dos colchetes.
+        const whatsappMetadataRegex = /^\[[^\]]+\]\s[^:]+:\s*/;
         let cleanLine = originalLine.replace(whatsappMetadataRegex, '');
         
-        // Ignora linhas que eram SÓ metadados ou mensagens de sistema (ex: "ok")
         if (!cleanLine.trim() || /^\s*ok\s*$/i.test(cleanLine)) {
             return;
         }
 
-        // NOVO: Adiciona um espaço entre números e letras para tratar casos como "31kids"
-        // Isso transforma "31kids" em "31 kids", facilitando o parsing
         cleanLine = cleanLine.replace(/(\d+)([a-zA-Záéíóúâêîôûãõç]+)/g, '$1 $2');
         
         const normalizedLine = normalizeText(cleanLine);
@@ -189,14 +185,11 @@ function parseRawData(rawText) {
         let matchedKeywordFound = '';
         let currentLineGroup = null;
 
-        // CORRIGIDO: Busca pelo número na linha JÁ LIMPA
         const numMatch = normalizedLine.match(/(\d+)/);
 
         if (numMatch) {
-            // O bug de pegar "17" em vez de "31" é corrigido aqui, pois a data já foi removida.
             matchedQuantity = parseInt(numMatch[0], 10);
 
-            // 1. Tentar encontrar palavras-chave específicas
             for (const mapping of activeKeywordMap) {
                 for (const keyword of mapping.keywords) {
                     if (normalizedLine.includes(keyword)) {
@@ -210,7 +203,6 @@ function parseRawData(rawText) {
                 if (processed) break;
             }
 
-            // 2. Lógica de contexto para 'tias'/'tios' (inalterada, mas agora funciona com o número correto)
             if (!processed) {
                 const isGenericTiaTerm = normalizedLine.includes('tias') || normalizedLine.includes('tia');
                 const isGenericTioTerm = normalizedLine.includes('tios') || normalizedLine.includes('tio');
@@ -219,12 +211,12 @@ function parseRawData(rawText) {
                 if (isGenericTiaTerm || isGenericTioTerm || isGenericVoluntarioTerm) {
                     if (lastIdentifiedGroup === 'Kids') {
                         matchedInputId = 'kidsTias';
-                        matchedKeywordFound = isGenericTiaTerm ? 'tias (por contexto Kids)' : (isGenericTioTerm ? 'tios (por contexto Kids)' : 'voluntarios (por contexto Kids)');
+                        matchedKeywordFound = isGenericTiaTerm ? 'tias (por contexto Kids)' : 'voluntarios (por contexto Kids)';
                         processed = true;
                         currentLineGroup = 'Kids';
                     } else if (lastIdentifiedGroup === 'Teens') {
                         matchedInputId = 'teensTios';
-                        matchedKeywordFound = isGenericTioTerm ? 'tios (por contexto Teens)' : (isGenericTiaTerm ? 'tias (por contexto Teens)' : 'voluntarios (por contexto Teens)');
+                        matchedKeywordFound = isGenericTioTerm ? 'tios (por contexto Teens)' : 'voluntarios (por contexto Teens)';
                         processed = true;
                         currentLineGroup = 'Teens';
                     } else if (lastIdentifiedGroup === 'Babies') {
@@ -233,45 +225,37 @@ function parseRawData(rawText) {
                         processed = true;
                         currentLineGroup = 'Babies';
                     } else {
-                         // 3. Atribuição padrão para genéricos se nenhum contexto relevante for encontrado
                         if (isGenericTiaTerm) {
-                            matchedInputId = 'kidsTias'; // Padrão para 'tias' (kids)
+                            matchedInputId = 'kidsTias';
                             matchedKeywordFound = 'tias (padrao)';
                         } else if (isGenericTioTerm) {
-                            matchedInputId = 'teensTios'; // Padrão para 'tios' (teens)
+                            matchedInputId = 'teensTios';
                             matchedKeywordFound = 'tios (padrao)';
                         } else if (isGenericVoluntarioTerm) {
-                            matchedInputId = 'kidsTias'; // Padrão para 'voluntarios' (kids)
+                            matchedInputId = 'kidsTias';
                             matchedKeywordFound = 'voluntarios (padrao)';
                         }
                         if (matchedInputId) {
                             processed = true;
-                            currentLineGroup = getGroupFromInputId(matchedInputId); // Obtém o grupo do padrão atribuído
+                            currentLineGroup = getGroupFromInputId(matchedInputId);
                         }
                     }
                 }
             }
-
-            // Registro final no log de feedback
-            if (processed && matchedInputId !== null) {
-                parsedData[matchedInputId] = (parsedData[matchedInputId] || 0) + matchedQuantity;
-                feedbackLog.push({
-                    line: originalLine,
-                    status: 'success',
-                    message: `Encontrado: ${matchedQuantity} para "${matchedKeywordFound}" (ID: ${matchedInputId})`
-                });
-                if (currentLineGroup) {
-                    lastIdentifiedGroup = currentLineGroup;
-                }
-            } else {
-                feedbackLog.push({
-                    line: originalLine,
-                    status: 'ignored',
-                    message: 'Não reconhecido. Clique em "Associar" para ensinar o sistema.'
-                });
+        }
+        
+        if (processed && matchedInputId !== null) {
+            parsedData[matchedInputId] = (parsedData[matchedInputId] || 0) + matchedQuantity;
+            feedbackLog.push({
+                line: originalLine,
+                status: 'success',
+                message: `Encontrado: ${matchedQuantity} para "${matchedKeywordFound}" (ID: ${matchedInputId})`
+            });
+            if (currentLineGroup) {
+                lastIdentifiedGroup = currentLineGroup;
             }
-        } else { // Caso não encontre nenhum número na linha
-             feedbackLog.push({
+        } else {
+            feedbackLog.push({
                 line: originalLine,
                 status: 'ignored',
                 message: 'Não reconhecido. Clique em "Associar" para ensinar o sistema.'
