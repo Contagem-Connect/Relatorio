@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gerador de Relatório de Contagem - Connect</title>
-    <link rel="stylesheet" href="style.css"> <!-- Assumindo que está no mesmo diretório -->
+    <link rel="stylesheet" href="style.css"> 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
@@ -18,19 +18,19 @@
             <form id="reportForm">
                 <div class="form-group">
                     <label for="eventName">Nome do Evento/Período:</label>
-                    <input type="text" id="eventName" name="eventName" required>
+                    <input type="text" id="eventName" name="eventName" required placeholder="Ex: Culto de Domingo - Manhã">
                 </div>
 
-                <fieldset>
-                    <legend>Culto Principal</legend>
+                <fieldset data-group="Culto">
+                    <legend>Culto Principal <span class="group-total" style="font-size: 0.8em; color: var(--secondary-color); font-weight: normal;">(Total: 0)</span></legend>
                     <div class="form-group">
                         <label for="cultoPresentes">Presentes no Culto:</label>
                         <input type="number" id="cultoPresentes" name="cultoPresentes" min="0" value="0">
                     </div>
                 </fieldset>
 
-                <fieldset>
-                    <legend>Sala Babies</legend>
+                <fieldset data-group="Babies">
+                    <legend>Sala Babies <span class="group-total" style="font-size: 0.8em; color: var(--secondary-color); font-weight: normal;">(Total: 0)</span></legend>
                     <div class="form-group">
                         <label for="babiesCriancas">Bebês:</label>
                         <input type="number" id="babiesCriancas" name="babiesCriancas" min="0" value="0">
@@ -45,8 +45,26 @@
                     </div>
                 </fieldset>
 
-                <fieldset>
-                    <legend>Kids</legend>
+                <!-- NOVA SEÇÃO LITTLES -->
+                <fieldset data-group="Littles">
+                    <legend>Sala Littles <span class="group-total" style="font-size: 0.8em; color: var(--secondary-color); font-weight: normal;">(Total: 0)</span></legend>
+                    <div class="form-group">
+                        <label for="littlesCriancas">Crianças (Littles):</label>
+                        <input type="number" id="littlesCriancas" name="littlesCriancas" min="0" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="littlesMaes">Mães:</label>
+                        <input type="number" id="littlesMaes" name="littlesMaes" min="0" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="littlesTios">Tio(a) / Voluntário(a):</label>
+                        <input type="number" id="littlesTios" name="littlesTios" min="0" value="0">
+                    </div>
+                </fieldset>
+                <!-- FIM NOVA SEÇÃO LITTLES -->
+
+                <fieldset data-group="Kids">
+                    <legend>Kids <span class="group-total" style="font-size: 0.8em; color: var(--secondary-color); font-weight: normal;">(Total: 0)</span></legend>
                     <div class="form-group">
                         <label for="kidsCriancas">Crianças (Kids):</label>
                         <input type="number" id="kidsCriancas" name="kidsCriancas" min="0" value="0">
@@ -61,8 +79,8 @@
                     </div>
                 </fieldset>
 
-                <fieldset>
-                    <legend>Teens</legend>
+                <fieldset data-group="Teens">
+                    <legend>Teens <span class="group-total" style="font-size: 0.8em; color: var(--secondary-color); font-weight: normal;">(Total: 0)</span></legend>
                     <div class="form-group">
                         <label for="teensAdolescentes">Adolescentes (Teens):</label>
                         <input type="number" id="teensAdolescentes" name="teensAdolescentes" min="0" value="0">
@@ -77,12 +95,10 @@
                     <p>Data de Geração: <span id="generationDate"></span></p>
                 </div>
                 
-                <!-- Botão para processar dados brutos -->
                 <div class="form-group" style="text-align: center; margin-top: 30px; margin-bottom: 25px;">
                     <button type="button" class="btn-submit btn-process" id="processRawDataBtn">Processar Dados Brutos (WhatsApp)</button>
                 </div>
 
-                <!-- Container para os botões -->
                 <div class="form-buttons-container">
                     <button type="submit" class="btn-submit" id="generateHtmlReport">Gerar Relatório HTML</button>
                     <button type="button" class="btn-submit btn-share" id="generateAndShareImage">Gerar e Compartilhar Imagem (WhatsApp)</button>
@@ -90,12 +106,11 @@
             </form>
         </section>
 
-        <!-- Largura ajustada para melhor proporção em telas verticais (ex: 500px * 1.5 scale = 750px de largura final da imagem) -->
         <div id="hiddenReportForCanvas" aria-hidden="true" style="width: 500px; position: absolute; left: -9999px; background-color: white;">
-            <!-- O conteúdo do relatório será injetado aqui pelo JavaScript antes da captura pelo html2canvas -->
+            <!-- Conteúdo injetado via JS -->
         </div>
 
-    </div> <!-- Fim do .container -->
+    </div>
 
     <footer class="report-footer" style="text-align: center; padding: 20px; background-color: var(--light-color); color: var(--secondary-color); font-size: 0.85rem; border-top: 1px solid var(--border-color); max-width: 800px; margin: 0 auto 20px auto; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px;">
         <p>Sistema de Relatórios Connect - Interface de Geração</p>
@@ -110,7 +125,7 @@
             </header>
             <div class="modal-body">
                 <p>Cole o texto copiado do WhatsApp abaixo:</p>
-                <textarea id="rawDataInput" rows="10" placeholder="Ex:&#10;215 no culto&#10;29 kids&#10;4 tias&#10;1 mãe&#10;15 teens&#10;3 tios"></textarea>
+                <textarea id="rawDataInput" rows="10" placeholder="Ex:&#10;215 no culto&#10;29 kids&#10;4 tias&#10;10 littles&#10;2 mães&#10;15 teens"></textarea>
                 
                 <div id="sundayTurnoSelector" style="display: none; margin-top: 15px;">
                     <p><strong>Por favor, selecione o turno do culto de Domingo:</strong></p>
@@ -118,9 +133,7 @@
                     <label style="margin-left: 20px;"><input type="radio" name="turno" value="Noite"> Noite</label>
                 </div>
 
-                <!-- NOVO: Resumo do Log de Feedback -->
                 <div id="parseFeedbackSummary" class="feedback-summary" style="display: none;"></div>
-                <!-- Log de Feedback Detalhado -->
                 <div id="parseFeedbackLog" class="feedback-log"></div>
             </div>
             <footer class="modal-footer">
@@ -129,7 +142,7 @@
         </div>
     </div>
 
-    <!-- NOVO: Modal/Overlay para Associar Termo -->
+    <!-- Modal para Associar Termo -->
     <div id="associateTermModal" class="modal-backdrop" style="display: none;">
         <div class="modal-content">
             <header class="modal-header">
@@ -141,19 +154,28 @@
                 <div class="form-group">
                     <label for="associateKeyword">Termo (Palavra-chave):</label>
                     <input type="text" id="associateKeyword" placeholder="Ex: 'participantes', 'culto principal'">
-                    <small>Qual palavra ou frase nesta linha deve ser associada? (Ex: 'voluntarios', 'culto principal')</small>
+                    <small>Qual palavra ou frase nesta linha deve ser associada?</small>
                 </div>
                 <div class="form-group">
                     <label for="associateField">Associar ao Campo:</label>
                     <select id="associateField">
                         <option value="">Selecione um campo</option>
                         <option value="cultoPresentes">Culto: Presentes</option>
+                        
                         <option value="babiesCriancas">Babies: Bebês</option>
                         <option value="babiesMaes">Babies: Mães</option>
                         <option value="babiesResponsaveis">Babies: Tio(a) / Voluntário(a)</option>
+                        
+                        <!-- OPÇÕES LITTLES -->
+                        <option value="littlesCriancas">Littles: Crianças</option>
+                        <option value="littlesMaes">Littles: Mães</option>
+                        <option value="littlesTios">Littles: Tio(a) / Voluntário(a)</option>
+                        <!-- FIM LITTLES -->
+
                         <option value="kidsCriancas">Kids: Crianças</option>
                         <option value="kidsMaes">Kids: Mães</option>
                         <option value="kidsTias">Kids: Tio(a) / Voluntário(a)</option>
+                        
                         <option value="teensAdolescentes">Teens: Adolescentes</option>
                         <option value="teensTios">Teens: Tio(a) / Voluntário(a)</option>
                     </select>
@@ -165,7 +187,7 @@
         </div>
     </div>
 
-    <script src="services/parser.js"></script> <!-- Carrega o parser PRIMEIRO -->
+    <script src="services/parser.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

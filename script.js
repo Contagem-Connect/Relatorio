@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const sundayTurnoSelector = document.getElementById('sundayTurnoSelector');
     const parseFeedbackLogEl = document.getElementById('parseFeedbackLog');
 
-    // --- NOVOS ELEMENTOS PARA O RESUMO E MODAL DE ASSOCIAÇÃO ---
+    // --- ELEMENTOS PARA RESUMO E ASSOCIAÇÃO ---
     const parseFeedbackSummaryEl = document.getElementById('parseFeedbackSummary');
     const associateTermModal = document.getElementById('associateTermModal');
     const closeAssociateModalBtn = document.getElementById('closeAssociateModalBtn');
@@ -25,20 +25,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const associateFieldSelect = document.getElementById('associateField');
     const saveAssociationBtn = document.getElementById('saveAssociationBtn');
 
-    let currentLineToAssociate = ''; // Armazena a linha que o usuário está corrigindo
+    let currentLineToAssociate = '';
 
-    // Verifica se as funções do parser estão disponíveis globalmente.
-    // Elas devem ser expostas no services/parser.js (e.g., window.saveCustomMapping = saveCustomMapping;)
+    // Verifica parser
     if (typeof parseRawData === 'undefined' || typeof saveCustomMapping === 'undefined' || typeof normalizeText === 'undefined') {
-        console.error("Funções do parser (parseRawData, saveCustomMapping, normalizeText) não encontradas globalmente. Verifique services/parser.js.");
-        alert("Erro na inicialização: Funções essenciais do parser não carregadas. Verifique o console.");
+        console.error("Funções do parser não encontradas. Verifique services/parser.js.");
+        alert("Erro na inicialização: Funções essenciais do parser não carregadas.");
         return;
     }
 
-    if (!reportForm || !eventNameInput || !generateHtmlReportBtn || !generateAndShareImageBtn || !hiddenReportForCanvasEl || !generationDateEl || !processRawDataBtn || !rawDataModal || !closeModalBtn || !rawDataInput || !fillFormBtn || !sundayTurnoSelector || !parseFeedbackLogEl || !parseFeedbackSummaryEl || !associateTermModal || !closeAssociateModalBtn || !originalLineToAssociateEl || !associateKeywordInput || !associateFieldSelect || !saveAssociationBtn) {
-        console.error("Um ou mais elementos essenciais do DOM não foram encontrados! Verifique os IDs no HTML.");
-        alert("Erro na inicialização da página. Alguns elementos HTML necessários não foram encontrados. Verifique o console para mais detalhes.");
-        return;
+    // MELHORIA UX: Carregar último nome de evento salvo
+    const savedEventName = localStorage.getItem('lastEventName');
+    if (savedEventName && eventNameInput) {
+        eventNameInput.value = savedEventName;
     }
 
     updateGenerationDate();
@@ -46,11 +45,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- CONTROLE DO MODAL DE DADOS BRUTOS ---
     processRawDataBtn.addEventListener('click', () => {
         rawDataModal.style.display = 'flex';
-        rawDataInput.value = ''; // Limpa o campo ao abrir
-        parseFeedbackLogEl.innerHTML = ''; // Limpa o log antigo
-        parseFeedbackSummaryEl.style.display = 'none'; // Esconde o resumo ao abrir
+        rawDataInput.value = '';
+        parseFeedbackLogEl.innerHTML = '';
+        parseFeedbackSummaryEl.style.display = 'none';
         const today = new Date();
-        // 0 = Domingo
         if (today.getDay() === 0) {
             sundayTurnoSelector.style.display = 'block';
         } else {
@@ -60,15 +58,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const closeModal = () => {
         rawDataModal.style.display = 'none';
-        rawDataInput.value = ''; // Limpa o campo ao fechar
-        parseFeedbackLogEl.innerHTML = ''; // Limpa o log ao fechar
-        parseFeedbackSummaryEl.style.display = 'none'; // Esconde o resumo ao fechar
+        rawDataInput.value = '';
+        parseFeedbackLogEl.innerHTML = '';
+        parseFeedbackSummaryEl.style.display = 'none';
     };
     closeModalBtn.addEventListener('click', closeModal);
     rawDataModal.addEventListener('click', (event) => {
-        if (event.target === rawDataModal) {
-            closeModal();
-        }
+        if (event.target === rawDataModal) closeModal();
     });
 
     // --- LÓGICA DE PREENCHIMENTO DO FORMULÁRIO E FEEDBACK ---
@@ -79,43 +75,38 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // 1. Chamar o parser externo (agora com lógica de contexto e personalização)
         const { parsedData, feedbackLog } = parseRawData(rawText);
 
-        // 2. Exibir o feedback visual para o usuário
-        parseFeedbackLogEl.innerHTML = ''; // Limpa log anterior
+        parseFeedbackLogEl.innerHTML = '';
         let successCount = 0;
         let ignoredCount = 0;
 
         feedbackLog.forEach(log => {
             const p = document.createElement('p');
-            // 'log.line' é a linha original do texto colado
-            // 'log.message' é a explicação do parser
             p.textContent = `${log.line} -> ${log.message}`;
-            // Aplica a classe CSS baseada no status (success ou ignored)
             p.className = log.status === 'success' ? 'log-success' : 'log-ignored';
 
             if (log.status === 'success') {
                 successCount++;
             } else {
                 ignoredCount++;
-                // Adicionar botão "Associar" para linhas ignoradas
                 const associateBtn = document.createElement('button');
                 associateBtn.textContent = 'Associar';
                 associateBtn.className = 'associate-btn';
-                associateBtn.onclick = () => openAssociateModal(log.line); // Passa a linha original
+                associateBtn.onclick = () => openAssociateModal(log.line);
                 p.appendChild(associateBtn);
             }
             parseFeedbackLogEl.appendChild(p);
         });
 
-        // 3. Exibir o resumo do log
         displayFeedbackSummary(successCount, ignoredCount);
 
-        // 4. Gerar título do evento
-        eventNameInput.value = generateEventTitle();
+        // Se o nome do evento estiver vazio, gera um automático, senão mantém o que o usuário já digitou/editou
+        if(!eventNameInput.value.trim()){
+            eventNameInput.value = generateEventTitle();
+        }
 
-        // 5. Limpar formulário e preencher com dados analisados
+        // Limpar inputs numéricos antes de preencher
         const numberInputs = document.querySelectorAll('form#reportForm input[type="number"]');
         numberInputs.forEach(input => input.value = 0);
         
@@ -126,14 +117,39 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        alert('Formulário analisado e preenchido com sucesso! Verifique o log de feedback abaixo para detalhes e para ensinar o sistema.');
-        // Não fechar o modal automaticamente para permitir a visualização do log e interação com o botão "Associar"
+        // MELHORIA UX: Atualizar subtotais após preenchimento automático
+        calculateSubtotals();
+        
+        alert('Formulário analisado e preenchido! Verifique o log para detalhes.');
     });
 
-    // --- NOVAS FUNÇÕES PARA O RESUMO DO FEEDBACK ---
+    // --- FUNÇÃO PARA CALCULAR TOTAIS EM TEMPO REAL ---
+    function calculateSubtotals() {
+        const fieldsets = document.querySelectorAll('fieldset[data-group]');
+        fieldsets.forEach(fieldset => {
+            const inputs = fieldset.querySelectorAll('input[type="number"]');
+            let subtotal = 0;
+            inputs.forEach(input => {
+                subtotal += parseInt(input.value) || 0;
+            });
+            
+            const totalSpan = fieldset.querySelector('.group-total');
+            if (totalSpan) {
+                totalSpan.textContent = `(Total: ${subtotal})`;
+            }
+        });
+    }
+
+    // Adiciona listener para recalcular totais sempre que um número mudar
+    const allNumberInputs = document.querySelectorAll('form#reportForm input[type="number"]');
+    allNumberInputs.forEach(input => {
+        input.addEventListener('input', calculateSubtotals);
+    });
+
+    // --- FUNÇÕES DE FEEDBACK ---
     function displayFeedbackSummary(success, ignored) {
-        parseFeedbackSummaryEl.innerHTML = ''; // Limpa qualquer resumo anterior
-        parseFeedbackSummaryEl.style.display = 'block'; // Mostra o contêiner
+        parseFeedbackSummaryEl.innerHTML = '';
+        parseFeedbackSummaryEl.style.display = 'block';
 
         let icon = '';
         let message = '';
@@ -141,37 +157,36 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (ignored === 0 && success > 0) {
             icon = '✅';
-            message = `Todas as ${success} linhas foram reconhecidas com sucesso!`;
+            message = `Todas as ${success} linhas reconhecidas!`;
             className += ' success-summary';
         } else if (success > 0 && ignored > 0) {
             icon = '⚠️';
-            message = `${success} linhas reconhecidas, ${ignored} linhas ignoradas.`;
+            message = `${success} reconhecidas, ${ignored} ignoradas.`;
             className += ' warning-summary';
         } else if (ignored > 0 && success === 0) {
             icon = '❌';
-            message = `Nenhuma linha reconhecida. ${ignored} linhas ignoradas.`;
+            message = `Nenhuma linha reconhecida. ${ignored} ignoradas.`;
             className += ' warning-summary'; 
-        } else { // Ambos 0, caso de texto vazio ou irrelevante
-            parseFeedbackSummaryEl.style.display = 'none'; // Não mostrar resumo se não houver dados
+        } else {
+            parseFeedbackSummaryEl.style.display = 'none';
             return;
         }
 
-        parseFeedbackSummaryEl.className = className; // Aplica as classes dinamicamente
+        parseFeedbackSummaryEl.className = className;
         parseFeedbackSummaryEl.innerHTML = `<span class="icon">${icon}</span> ${message}`;
     }
 
-    // --- NOVAS FUNÇÕES PARA O MODAL DE ASSOCIAÇÃO ---
+    // --- MODAL DE ASSOCIAÇÃO ---
     function openAssociateModal(originalLine) {
         currentLineToAssociate = originalLine;
         originalLineToAssociateEl.textContent = originalLine;
-        associateKeywordInput.value = ''; // Limpa campo de termo
-        associateFieldSelect.value = ''; // Limpa seleção
-        // Tenta pré-preencher o campo de termo com palavras da linha original
+        associateKeywordInput.value = '';
+        associateFieldSelect.value = '';
         const wordsInLine = normalizeText(originalLine).split(' ').filter(word => word.length > 2);
         if (wordsInLine.length > 0) {
-            associateKeywordInput.value = wordsInLine[0]; // Pega a primeira palavra como sugestão
+            associateKeywordInput.value = wordsInLine[0];
         }
-        associateTermModal.style.display = 'flex'; // Exibe o modal
+        associateTermModal.style.display = 'flex';
     }
 
     function closeAssociateModal() {
@@ -181,56 +196,40 @@ document.addEventListener('DOMContentLoaded', function() {
 
     closeAssociateModalBtn.addEventListener('click', closeAssociateModal);
     associateTermModal.addEventListener('click', (event) => {
-        if (event.target === associateTermModal) {
-            closeAssociateModal();
-        }
+        if (event.target === associateTermModal) closeAssociateModal();
     });
 
     saveAssociationBtn.addEventListener('click', () => {
         const keyword = associateKeywordInput.value.trim();
         const inputId = associateFieldSelect.value;
 
-        if (!keyword) {
-            alert('Por favor, digite o termo (palavra-chave) a ser associado.');
-            return;
-        }
-        if (!inputId) {
-            alert('Por favor, selecione o campo ao qual o termo será associado.');
+        if (!keyword || !inputId) {
+            alert('Preencha o termo e selecione o campo.');
             return;
         }
 
-        // Chamar a função para salvar o mapeamento (exposta por parser.js)
-        // Usa `window.` para garantir o acesso global, se `parser.js` não for um módulo ES6.
         if (typeof window.saveCustomMapping !== 'undefined' && typeof window.normalizeText !== 'undefined') {
             window.saveCustomMapping({ keywords: [window.normalizeText(keyword)], inputId: inputId });
-            alert(`Termo "${keyword}" associado a "${inputId}" com sucesso! O sistema tentará reconhecê-lo nas próximas vezes.`);
+            alert(`Termo "${keyword}" associado com sucesso!`);
             closeAssociateModal();
-            // Re-executa o parsing para aplicar o novo mapeamento imediatamente
             fillFormBtn.click(); 
         } else {
-            console.error("Função saveCustomMapping ou normalizeText não encontrada em window. Verifique services/parser.js.");
-            alert("Erro: Não foi possível salvar o mapeamento personalizado. Consulte o console.");
+            alert("Erro ao salvar mapeamento.");
         }
     });
 
-    // --- LÓGICA ORIGINAL DO RELATÓRIO --- (mantida inalterada)
+    // --- GERAÇÃO DE RELATÓRIO ---
     function generateEventTitle() {
         const today = new Date();
         const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const dayOfWeek = today.getDay(); // 0: Domingo, ..., 3: Quarta
-        
+        const dayOfWeek = today.getDay(); 
         const weekDays = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
         
-        if (dayOfWeek === 3) { // Quarta-feira
-            return `Culto de Quarta-feira - ${dateString}`;
-        }
-        
-        if (dayOfWeek === 0) { // Domingo
+        if (dayOfWeek === 3) return `Culto de Quarta-feira - ${dateString}`;
+        if (dayOfWeek === 0) {
             const selectedTurno = document.querySelector('input[name="turno"]:checked').value;
             return `Culto do dia ${dateString} (${weekDays[dayOfWeek]} - ${selectedTurno})`;
         }
-        
-        // Padrão para outros dias
         return `Culto do dia ${dateString} (${weekDays[dayOfWeek]})`;
     }
 
@@ -242,11 +241,21 @@ document.addEventListener('DOMContentLoaded', function() {
             return null;
         }
 
+        // MELHORIA UX: Salvar nome do evento
+        localStorage.setItem('lastEventName', eventName);
+
+        // CONFIGURAÇÃO DOS DADOS - INCLUI LITTLES
         const dataEntriesConfig = [
             { grupo: 'Culto', categoria: 'Culto', descricao: 'Presentes', id: 'cultoPresentes' },
             { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Bebês', id: 'babiesCriancas' },
             { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Mães', id: 'babiesMaes' },
             { grupo: 'Sala Babies', categoria: 'Babies', descricao: 'Tio(a) / Voluntário(a)', id: 'babiesResponsaveis' },
+            
+            // NOVO: LITTLES
+            { grupo: 'Sala Littles', categoria: 'Littles', descricao: 'Crianças', id: 'littlesCriancas' },
+            { grupo: 'Sala Littles', categoria: 'Littles', descricao: 'Mães', id: 'littlesMaes' },
+            { grupo: 'Sala Littles', categoria: 'Littles', descricao: 'Tio(a) / Voluntário(a)', id: 'littlesTios' },
+            
             { grupo: 'Kids', categoria: 'Kids', descricao: 'Crianças', id: 'kidsCriancas' },
             { grupo: 'Kids', categoria: 'Kids', descricao: 'Mães', id: 'kidsMaes' },
             { grupo: 'Kids', categoria: 'Kids', descricao: 'Tio(a) / Voluntário(a)', id: 'kidsTias' },
@@ -267,8 +276,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     quantidade: quantidade
                 });
                 totalGeral += quantidade;
-            } else {
-                console.warn(`Elemento de input com ID '${entryConfig.id}' não encontrado.`);
             }
         });
         return { eventName, reportData, totalGeral };
@@ -289,8 +296,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const fullHtmlReport = generateFullHtmlReportString(eventName, reportData, totalGeral, currentDateString);
             downloadHtmlReport(fullHtmlReport, eventName, currentDateString);
         } catch (error) {
-            console.error("Erro ao gerar relatório HTML:", error);
-            alert("Ocorreu um erro ao gerar o relatório HTML. Verifique o console.");
+            console.error("Erro ao gerar HTML:", error);
+            alert("Erro ao gerar relatório HTML.");
         }
     }
 
@@ -306,11 +313,6 @@ document.addEventListener('DOMContentLoaded', function() {
             hiddenReportForCanvasEl.innerHTML = reportContentHtml;
             
             const elementToCapture = hiddenReportForCanvasEl.querySelector('.container');
-            if (!elementToCapture) {
-                console.error("Elemento '.container' dentro de '#hiddenReportForCanvas' não encontrado para captura.");
-                alert("Erro ao preparar conteúdo para imagem: container interno não encontrado.");
-                return;
-            }
             
             this.textContent = 'Gerando imagem...';
             this.disabled = true;
@@ -328,9 +330,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             canvas.toBlob(async function(blob) {
                 if (!blob) {
-                    alert('Erro ao gerar imagem (blob nulo).');
-                    generateAndShareImageBtn.textContent = 'Gerar e Compartilhar Imagem (WhatsApp)';
-                    generateAndShareImageBtn.disabled = false;
+                    alert('Erro ao gerar imagem.');
                     return;
                 }
                 const safeEventName = eventName.replace(/[^a-z0-9_-\s]/gi, '_').replace(/\s+/g, '_');
@@ -347,16 +347,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (navigator.share && navigator.canShare && navigator.canShare({ files: filesArray })) {
                     try {
                         await navigator.share(shareData);
-                        console.log('Relatório compartilhado com sucesso!');
                     } catch (err) {
-                        console.error('Erro ao compartilhar:', err);
-                        if (err.name !== 'AbortError') {
-                           alert(`Erro ao compartilhar: ${err.message}. Você pode tentar baixar a imagem.`);
-                           downloadImage(blob, fileName);
-                        }
+                        if (err.name !== 'AbortError') downloadImage(blob, fileName);
                     }
                 } else {
-                    alert('Seu navegador não suporta compartilhamento direto de imagens. A imagem será baixada para compartilhamento manual.');
                     downloadImage(blob, fileName);
                 }
                 
@@ -367,11 +361,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 'image/png', 0.95);
 
         } catch (error) {
-            console.error("Erro ao gerar/compartilhar imagem:", error);
-            alert("Ocorreu um erro ao gerar ou compartilhar a imagem. Verifique o console.");
+            console.error("Erro imagem:", error);
+            alert("Erro ao gerar imagem.");
             generateAndShareImageBtn.textContent = 'Gerar e Compartilhar Imagem (WhatsApp)';
             generateAndShareImageBtn.disabled = false;
-            hiddenReportForCanvasEl.innerHTML = '';
         }
     });
 
@@ -388,10 +381,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function generateReportTableContentHtml(data, total, filterZeros = false) {
         let tableContentHTML = '';
         let entriesToDisplay = data;
-
-        if (filterZeros) {
-            entriesToDisplay = data.filter(entry => entry.quantidade > 0);
-        }
+        if (filterZeros) entriesToDisplay = data.filter(entry => entry.quantidade > 0);
 
         if (entriesToDisplay.length === 0 && total === 0) {
             tableContentHTML = `<tr><td colspan="3" style="text-align: center; font-style: italic;">Nenhuma contagem registrada.</td></tr>`;
@@ -404,20 +394,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>${escapeHTML(entry.categoria)}</td>
                         <td>${escapeHTML(entry.descricao)}</td>
                         <td>${entry.quantidade}</td>
-                    </tr>
-                `;
+                    </tr>`;
             });
         }
 
         let totalRowHtml = '';
         if (entriesToDisplay.length > 0 || total > 0) {
-            totalRowHtml = `
-                <tr class="total">
-                    <td>Total</td>
-                    <td>Total Geral</td>
-                    <td>${total}</td>
-                </tr>
-            `;
+            totalRowHtml = `<tr class="total"><td>Total</td><td>Total Geral</td><td>${total}</td></tr>`;
         }
         return tableContentHTML + totalRowHtml;
     }
@@ -436,16 +419,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <section class="table-section">
                         <h2>${escapeHTML(eventName)}</h2>
                         <table>
-                            <thead>
-                                <tr>
-                                    <th>Categoria</th>
-                                    <th>Descrição</th>
-                                    <th>Quantidade</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${tableRowsHtml}
-                            </tbody>
+                            <thead><tr><th>Categoria</th><th>Descrição</th><th>Quantidade</th></tr></thead>
+                            <tbody>${tableRowsHtml}</tbody>
                         </table>
                     </section>
                 </div>
@@ -456,115 +431,32 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
     
-    function getReportStylesForCanvas() {
-        return getReportStyles(true);
-    }
-
-    function getReportStylesForHtmlDownload() {
-        return getReportStyles(false);
-    }
+    function getReportStylesForCanvas() { return getReportStyles(true); }
+    function getReportStylesForHtmlDownload() { return getReportStyles(false); }
     
     function getReportStyles(isForCanvas = false) {
         const headerH1Size = isForCanvas ? '1.6em' : '1.8em';
         const tableSectionH2Size = isForCanvas ? '1.5em' : '1.4em'; 
         const tableSectionH2TextAlign = isForCanvas ? 'center' : 'left';
-        const tableSectionH2MarginBottom = isForCanvas ? '20px' : '15px'; 
-
-        const tableCellPadding = isForCanvas ? '10px 8px' : '12px 15px';
-        const tableCellFontSize = isForCanvas ? '0.9em' : '0.95em';
-        const reportOutputPadding = isForCanvas ? '20px 15px' : '25px 30px';
-        const headerPadding = isForCanvas ? '20px 15px' : '25px 30px';
-        const footerPadding = isForCanvas ? '15px 20px' : '20px 30px';
-        const footerFontSize = isForCanvas ? '0.8em' : '0.85rem';
-
-
+        
         return `
         <style>
-            :root {
-                --primary-color: #4a6fa5;
-                --secondary-color: #6c757d;
-                --light-color: #f8f9fa;
-                --dark-color: #343a40;
-                --border-color: #e0e6ed;
-            }
-            * { 
-                box-sizing: border-box; 
-                margin: 0;
-                padding: 0;
-            }
-            body { 
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background-color: white; 
-                color: var(--dark-color);
-                line-height: 1.5; 
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
-            }
-            .container { 
-                background-color: white;
-                border-radius: 0; 
-                box-shadow: none; 
-                overflow: hidden; 
-            }
-            header.report-header {
-                background: linear-gradient(135deg, var(--primary-color), #5a8ac6);
-                color: white;
-                padding: ${headerPadding};
-                text-align: center;
-            }
-            header.report-header h1 {
-                margin: 0;
-                font-size: ${headerH1Size}; 
-                font-weight: 600;
-            }
-            .report-output-container {
-                padding: ${reportOutputPadding}; 
-            }
-            .table-section h2 {
-                color: var(--primary-color);
-                font-size: ${tableSectionH2Size}; 
-                font-weight: 600;
-                text-align: ${tableSectionH2TextAlign};
-                margin-top: 0;
-                margin-bottom: ${tableSectionH2MarginBottom}; 
-                border-bottom: 1px solid var(--border-color);
-                padding-bottom: 10px;
-            }
-            table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-            th, td {
-                padding: ${tableCellPadding}; 
-                text-align: left;
-                vertical-align: middle;
-                font-size: ${tableCellFontSize}; 
-            }
-            thead th {
-                background-color: var(--light-color);
-                color: var(--primary-color);
-                font-weight: 600;
-                border-bottom: 2px solid var(--border-color);
-            }
+            :root { --primary-color: #4a6fa5; --secondary-color: #6c757d; --light-color: #f8f9fa; --dark-color: #343a40; --border-color: #e0e6ed; }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: white; color: var(--dark-color); line-height: 1.5; }
+            .container { background-color: white; border-radius: 0; box-shadow: none; overflow: hidden; }
+            header.report-header { background: linear-gradient(135deg, var(--primary-color), #5a8ac6); color: white; padding: 25px 30px; text-align: center; }
+            header.report-header h1 { margin: 0; font-size: ${headerH1Size}; font-weight: 600; }
+            .report-output-container { padding: 25px 30px; }
+            .table-section h2 { color: var(--primary-color); font-size: ${tableSectionH2Size}; font-weight: 600; text-align: ${tableSectionH2TextAlign}; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 12px 15px; text-align: left; vertical-align: middle; }
+            thead th { background-color: var(--light-color); color: var(--primary-color); font-weight: 600; border-bottom: 2px solid var(--border-color); }
             thead th:last-child { text-align: center; }
             tbody td { border-bottom: 1px solid var(--border-color); }
-            tbody tr:not(.total):last-of-type td { border-bottom: none; }
             tbody td:last-child { text-align: center; font-weight: 600; }
-            tr.total td {
-                background-color: var(--light-color);
-                color: var(--primary-color);
-                font-weight: bold;
-                border-top: 2px solid var(--primary-color);
-                border-bottom: none; 
-            }
-            footer.report-footer {
-                background-color: var(--light-color);
-                color: var(--secondary-color);
-                text-align: center;
-                padding: ${footerPadding};
-                font-size: ${footerFontSize};
-                border-top: 1px solid var(--border-color);
-            }
+            tr.total td { background-color: var(--light-color); color: var(--primary-color); font-weight: bold; border-top: 2px solid var(--primary-color); }
+            footer.report-footer { background-color: var(--light-color); color: var(--secondary-color); text-align: center; padding: 20px; font-size: 0.85rem; border-top: 1px solid var(--border-color); }
         </style>
         `;
     }
@@ -579,34 +471,19 @@ document.addEventListener('DOMContentLoaded', function() {
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Relatório de Contagem - ${escapeHTML(eventName)}</title>
+                <title>Relatório - ${escapeHTML(eventName)}</title>
                 ${styles}
             </head>
             <body>
                 <div class="container" style="max-width: 800px; margin: 20px auto; box-shadow: 0 6px 12px rgba(0,0,0,0.1); border-radius: 8px;">
-                    <header class="report-header">
-                        <h1>Relatório de Contagem - Connect</h1>
-                    </header>
+                    <header class="report-header"><h1>Relatório de Contagem - Connect</h1></header>
                     <div class="report-output-container">
                         <section class="table-section">
                             <h2>${escapeHTML(eventName)}</h2>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Categoria</th>
-                                        <th>Descrição</th>
-                                        <th>Quantidade</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${tableRowsHtml}
-                                </tbody>
-                            </table>
+                            <table><thead><tr><th>Categoria</th><th>Descrição</th><th>Quantidade</th></tr></thead><tbody>${tableRowsHtml}</tbody></table>
                         </section>
                     </div>
-                    <footer class="report-footer">
-                        <p>Sistema de Relatórios Connect | Gerado em ${escapeHTML(generationDate)}</p>
-                    </footer>
+                    <footer class="report-footer"><p>Sistema de Relatórios Connect | Gerado em ${escapeHTML(generationDate)}</p></footer>
                 </div>
             </body>
             </html>
@@ -628,22 +505,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function updateGenerationDateAndGetIt() {
         const today = new Date();
-        const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const timeString = today.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const fullDateTimeString = `${dateString} ${timeString}`;
-        if (generationDateEl) {
-            generationDateEl.textContent = fullDateTimeString;
-        }
-        return fullDateTimeString;
+        const str = `${today.toLocaleDateString('pt-BR')} ${today.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}`;
+        if (generationDateEl) generationDateEl.textContent = str;
+        return str;
     }
 
     function updateGenerationDate() {
-        const today = new Date();
-        const dateString = today.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const timeString = today.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        if (generationDateEl) {
-            generationDateEl.textContent = `${dateString} ${timeString}`;
-        }
+        updateGenerationDateAndGetIt();
     }
 
     function escapeHTML(str) {
